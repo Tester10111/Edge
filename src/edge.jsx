@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Heart, MessageCircle, Plus, Search, Home, Briefcase, ShoppingBag, User, X, DollarSign, Send, Bookmark, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Compass, Trash2, ShieldCheck, Baby, Code, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Palette } from 'lucide-react';
 
 // --- IMPORTANT: Set your Google Apps Script Web App URL here ---
-const SCRIPT_URL = '/api';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbztnp4_OpbKX01PJ6PWXcBSlnG8titrAgyVAhIOr4QT2MubMHjiv6LB-d-4uwCGE9ZH/exec';
 
 // --- Helper Functions ---
 const apiRequest = async (method, path, data = null, id = null) => {
