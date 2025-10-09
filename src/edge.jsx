@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Heart, MessageCircle, Plus, Search, Home, User, X, Send, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Users, Trophy, Target, Clock, Flame } from 'lucide-react';
+import { Heart, MessageCircle, Plus, Search, Home, User, X, Send, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Users, Trophy, Target, Clock, Flame, Camera, Loader } from 'lucide-react';
 
 // --- IMPORTANT: Set your Google Apps Script Web App URL here ---
 const SCRIPT_URL = '/api';
@@ -74,6 +74,12 @@ const formatTimestamp = (isoString) => {
 
 // --- UI Components ---
 
+const LoadingSpinner = () => (
+  <div className="inline-flex items-center justify-center">
+    <Loader className="animate-spin" size={20} />
+  </div>
+);
+
 const Shimmer = () => (
   <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/60 to-transparent dark:via-slate-800/50"></div>
 );
@@ -116,7 +122,7 @@ const Badge = ({ name }) => {
     );
 };
 
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, isLoading }) => {
     if (!isOpen) return null;
 
     return (
@@ -130,11 +136,11 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
                     <p className="text-slate-600 dark:text-slate-400">{message}</p>
                 </div>
                 <div className="flex gap-4 mt-8">
-                    <button onClick={onClose} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all">
+                    <button onClick={onClose} disabled={isLoading} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all disabled:opacity-50">
                         Cancel
                     </button>
-                    <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 active:scale-95 transition-all">
-                        Delete
+                    <button onClick={onConfirm} disabled={isLoading} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                        {isLoading ? <LoadingSpinner /> : 'Delete'}
                     </button>
                 </div>
             </div>
@@ -170,7 +176,10 @@ const EdgeApp = () => {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [viewingUser, setViewingUser] = useState(null);
   const [showGroupChat, setShowGroupChat] = useState(false);
-  const [groupChatMessage, setGroupChatMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
+  const [showDeleteConversation, setShowDeleteConversation] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState(null);
   
   const [posts, setPosts] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -199,7 +208,9 @@ const EdgeApp = () => {
     name: '',
     bio: '',
     avatar: '',
-    email: ''
+    email: '',
+    profileImageURL: '',
+    coverImageURL: ''
   });
 
   const showToast = useCallback((message, type = 'success') => {
@@ -272,7 +283,6 @@ const EdgeApp = () => {
             };
         });
 
-        // Generate leaderboard data
         const leaderboard = usersData.map(user => ({
             ...user,
             linesPickedToday: Math.floor(Math.random() * 500) + 100,
@@ -312,7 +322,14 @@ const EdgeApp = () => {
         const user = JSON.parse(savedUser);
         setCurrentUser(user);
         setIsAuthenticated(true);
-        setProfileForm(user);
+        setProfileForm({
+          name: user.name || '',
+          bio: user.bio || '',
+          avatar: user.avatar || '',
+          email: user.email || '',
+          profileImageURL: user.profileImageURL || '',
+          coverImageURL: user.coverImageURL || ''
+        });
         
         const settingsToApply = savedSettings ? JSON.parse(savedSettings) : {
             darkMode: user.darkMode || false,
@@ -446,7 +463,14 @@ const EdgeApp = () => {
     const userSettings = { darkMode: user.darkMode || false };
     setSettings(userSettings);
     setCurrentUser(user);
-    setProfileForm(user);
+    setProfileForm({
+      name: user.name || '',
+      bio: user.bio || '',
+      avatar: user.avatar || '',
+      email: user.email || '',
+      profileImageURL: user.profileImageURL || '',
+      coverImageURL: user.coverImageURL || ''
+    });
     setIsAuthenticated(true);
     setShowAuthModal(false);
     localStorage.setItem('edge-currentUser', JSON.stringify(user));
@@ -472,6 +496,8 @@ const EdgeApp = () => {
       verified: false,
       badges: 'Warehouse Associate',
       darkMode: false,
+      profileImageURL: '',
+      coverImageURL: ''
     };
 
     try {
@@ -480,7 +506,14 @@ const EdgeApp = () => {
             const userWithId = { ...newUser, id: result.id || result.data?.id };
             setAllUsers(prev => [...prev, userWithId]);
             setCurrentUser(userWithId);
-            setProfileForm(userWithId);
+            setProfileForm({
+              name: userWithId.name,
+              bio: userWithId.bio,
+              avatar: userWithId.avatar,
+              email: userWithId.email || '',
+              profileImageURL: '',
+              coverImageURL: ''
+            });
             setIsAuthenticated(true);
             setShowAuthModal(false);
             const userSettings = { darkMode: false };
@@ -509,9 +542,21 @@ const EdgeApp = () => {
           showToast('No user logged in', 'error');
           return;
       }
+      
+      setIsSaving(true);
+      
       try {
-        await apiRequest('PUT', 'users', profileForm, currentUser.id);
-        const updatedUser = { ...currentUser, ...profileForm };
+        const updateData = {
+          name: profileForm.name,
+          bio: profileForm.bio,
+          email: profileForm.email,
+          profileImageURL: profileForm.profileImageURL,
+          coverImageURL: profileForm.coverImageURL,
+          avatar: profileForm.avatar
+        };
+        
+        await apiRequest('PUT', 'users', updateData, currentUser.id);
+        const updatedUser = { ...currentUser, ...updateData };
         setCurrentUser(updatedUser);
         setAllUsers(prevUsers => prevUsers.map(u => u.id === currentUser.id ? updatedUser : u));
         localStorage.setItem('edge-currentUser', JSON.stringify(updatedUser));
@@ -520,6 +565,8 @@ const EdgeApp = () => {
       } catch (error) {
         showToast('Failed to update profile.', 'error');
         console.error(error);
+      } finally {
+        setIsSaving(false);
       }
   }, [currentUser, profileForm, showToast]);
   
@@ -593,6 +640,8 @@ const EdgeApp = () => {
   }, []);
 
   const handlePostSubmit = useCallback(async (postData) => {
+      setIsPosting(true);
+      
       const dataToSubmit = {
           ...postData,
           userId: currentUser.id,
@@ -648,6 +697,8 @@ const EdgeApp = () => {
       } catch (error) {
           showToast('Failed to submit post.', 'error');
           console.error(error);
+      } finally {
+          setIsPosting(false);
       }
   }, [currentUser, posts, showToast]);
   
@@ -657,6 +708,7 @@ const EdgeApp = () => {
   }, []);
 
   const confirmDelete = useCallback(async () => {
+      setIsSaving(true);
       try {
           await apiRequest('DELETE', 'posts', null, postToDelete);
           setPosts(posts.filter(p => p.id !== postToDelete));
@@ -664,6 +716,7 @@ const EdgeApp = () => {
       } catch(error) {
           showToast('Failed to delete post.', 'error');
       } finally {
+          setIsSaving(false);
           setShowDeleteConfirm(false);
           setPostToDelete(null);
       }
@@ -829,25 +882,28 @@ const EdgeApp = () => {
       }
   }, [currentUser, conversations, showToast]);
 
-  const handleSendGroupMessage = useCallback(() => {
-    if (!groupChatMessage.trim() || !currentUser) return;
-    
-    const newMessage = {
-      userId: currentUser.id,
-      text: groupChatMessage,
-      timestamp: new Date().toISOString(),
-      user: currentUser
-    };
-    
-    setGroupMessages(prev => [...prev, newMessage]);
-    setGroupChatMessage('');
-    
-    setTimeout(() => {
-      if (groupChatScrollRef.current) {
-        groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
+  const handleDeleteConversation = useCallback((convId) => {
+      setConversationToDelete(convId);
+      setShowDeleteConversation(true);
+  }, []);
+
+  const confirmDeleteConversation = useCallback(async () => {
+      setIsSaving(true);
+      try {
+          await apiRequest('DELETE', 'conversations', null, conversationToDelete);
+          setConversations(conversations.filter(c => c.id !== conversationToDelete));
+          if (selectedConversation?.id === conversationToDelete) {
+              setSelectedConversation(null);
+          }
+          showToast('Conversation deleted', 'success');
+      } catch(error) {
+          showToast('Failed to delete conversation.', 'error');
+      } finally {
+          setIsSaving(false);
+          setShowDeleteConversation(false);
+          setConversationToDelete(null);
       }
-    }, 100);
-  }, [groupChatMessage, currentUser]);
+  }, [conversationToDelete, conversations, selectedConversation, showToast]);
 
   const filteredAndSortedPosts = useMemo(() => {
     return posts
@@ -932,8 +988,8 @@ const EdgeApp = () => {
                       }}
                       className="text-4xl hover:scale-110 active:scale-95 transition-transform animate-bounce-in"
                     >
-                      {typeof post.user?.avatar === 'string' && post.user.avatar.startsWith('data:') ? 
-                        <img src={post.user.avatar} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                      {post.user?.profileImageURL ? 
+                        <img src={post.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                         post.user?.avatar
                       }
                     </button>
@@ -1023,7 +1079,12 @@ const EdgeApp = () => {
                     <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4 animate-slide-down">
                         <div className="relative">
                             <div className="flex gap-3">
-                                <div className="text-2xl">{currentUser?.avatar}</div>
+                                <div className="text-2xl">
+                                  {currentUser?.profileImageURL ? 
+                                    <img src={currentUser.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
+                                    currentUser?.avatar
+                                  }
+                                </div>
                                 <div className="flex-1 relative">
                                     <textarea
                                         value={commentText}
@@ -1046,7 +1107,12 @@ const EdgeApp = () => {
                                                     onClick={() => insertCommentMention(user.username)}
                                                     className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left"
                                                 >
-                                                    <div className="text-xl">{user.avatar}</div>
+                                                    <div className="text-xl">
+                                                      {user.profileImageURL ? 
+                                                        <img src={user.profileImageURL} alt="Avatar" className="w-6 h-6 rounded-full object-cover" /> :
+                                                        user.avatar
+                                                      }
+                                                    </div>
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-bold text-slate-900 dark:text-white truncate text-xs">{user.name}</p>
                                                         <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
@@ -1070,7 +1136,12 @@ const EdgeApp = () => {
                             <div className="space-y-3">
                                 {post.commentsList.map((comment, idx) => (
                                     <div key={idx} className="flex gap-3 animate-slide-in-up" style={{ animationDelay: `${idx * 50}ms` }}>
-                                        <div className="text-2xl">{comment.user?.avatar}</div>
+                                        <div className="text-2xl">
+                                          {comment.user?.profileImageURL ? 
+                                            <img src={comment.user.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
+                                            comment.user?.avatar
+                                          }
+                                        </div>
                                         <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-3">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="font-bold text-slate-900 dark:text-white text-sm">{comment.user?.name}</span>
@@ -1096,13 +1167,27 @@ const EdgeApp = () => {
     );
   });
 
-  const AuthModal = ({ onLogin, onSignup, onClose }) => {
+const AuthModal = ({ onLogin, onSignup, onClose }) => {
     const [authMode, setAuthMode] = useState('login');
     const [authForm, setAuthForm] = useState({ name: '', username: '', password: '', email: '' });
+    const [isLoading, setIsLoading] = useState(false);
     
     const handleFormChange = (e) => {
       const { name, value } = e.target;
       setAuthForm(prev => ({...prev, [name]: value}));
+    }
+
+    const handleSubmit = async () => {
+      setIsLoading(true);
+      try {
+        if (authMode === 'login') {
+          await onLogin(authForm);
+        } else {
+          await onSignup(authForm);
+        }
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     return (
@@ -1125,13 +1210,13 @@ const EdgeApp = () => {
                     <input type="text" name="username" placeholder="Username" value={authForm.username} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base" />
                     <input type="password" name="password" placeholder="Password" value={authForm.password} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base" />
                 </div>
-                <button type="button" onClick={() => authMode === 'login' ? onLogin(authForm) : onSignup(authForm)} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all text-base relative overflow-hidden group">
-                    <span className="relative z-10">{authMode === 'login' ? 'Login' : 'Create Account'}</span>
+                <button type="button" onClick={handleSubmit} disabled={isLoading} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all text-base relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {isLoading ? <LoadingSpinner /> : <span className="relative z-10">{authMode === 'login' ? 'Login' : 'Create Account'}</span>}
                     <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </button>
                 <p className="text-slate-600 dark:text-slate-400 text-base text-center mt-6">
                     {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
-                    <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold">
+                    <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold" disabled={isLoading}>
                         {authMode === 'login' ? 'Sign up' : 'Login'}
                     </button>
                 </p>
@@ -1206,11 +1291,11 @@ const EdgeApp = () => {
             <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-6 md:hidden"></div>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">{postToEdit ? 'Edit Post' : 'Create Post'}</h2>
-              <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95"><X size={24} /></button>
+              <button onClick={onClose} disabled={isPosting} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95"><X size={24} /></button>
             </div>
             <div className="space-y-4">
               <div className="relative">
-                <textarea name="content" placeholder="What's on your mind? Use @ to mention someone..." value={formData.content} onChange={handleFormChange} rows={6} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-base" />
+                <textarea name="content" placeholder="What's on your mind? Use @ to mention someone..." value={formData.content} onChange={handleFormChange} rows={6} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-base" disabled={isPosting} />
                 {localMentionSuggestions.length > 0 && (
                   <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
                     {localMentionSuggestions.map((user, index) => (
@@ -1220,7 +1305,12 @@ const EdgeApp = () => {
                         className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left animate-slide-in-up"
                         style={{ animationDelay: `${index * 30}ms` }}
                       >
-                        <div className="text-2xl">{user.avatar}</div>
+                        <div className="text-2xl">
+                          {user.profileImageURL ? 
+                            <img src={user.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
+                            user.avatar
+                          }
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-slate-900 dark:text-white truncate text-sm">{user.name}</p>
                           <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
@@ -1230,17 +1320,17 @@ const EdgeApp = () => {
                   </div>
                 )}
               </div>
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl p-8 text-center hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95" onClick={() => fileInputRef.current?.click()}>
+              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl p-8 text-center hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95" onClick={() => !isPosting && fileInputRef.current?.click()}>
                 <ImageIcon size={40} className="mx-auto text-slate-400 dark:text-slate-500 mb-3 animate-bounce-in" />
                 <p className="text-slate-600 dark:text-slate-400 font-medium">Tap to upload images</p>
-                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple hidden />
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple hidden disabled={isPosting} />
               </div>
               {Array.isArray(formData.images) && formData.images.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {formData.images.map((img, index) => (
                     <div key={index} className="relative">
                       <img src={img} alt="" className="w-20 h-20 object-cover rounded-lg" />
-                      <button onClick={() => removeImage(index)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors">
+                      <button onClick={() => removeImage(index)} disabled={isPosting} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors">
                         <X size={14} />
                       </button>
                     </div>
@@ -1248,9 +1338,13 @@ const EdgeApp = () => {
                 </div>
               )}
             </div>
-            <button onClick={handleSubmit} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base relative overflow-hidden group">
-                <span className="relative z-10 flex items-center gap-2"><Send size={20} />{postToEdit ? 'Save Changes' : 'Post'}</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <button onClick={handleSubmit} disabled={isPosting} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed">
+                {isPosting ? <LoadingSpinner /> : (
+                  <>
+                    <span className="relative z-10 flex items-center gap-2"><Send size={20} />{postToEdit ? 'Save Changes' : 'Post'}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  </>
+                )}
             </button>
           </div>
         </div>
@@ -1288,7 +1382,12 @@ const EdgeApp = () => {
                 >
                     <div className="flex items-start gap-3">
                     <div className="relative">
-                        <div className="text-3xl animate-bounce-in">{sender?.avatar || '👤'}</div>
+                        <div className="text-3xl animate-bounce-in">
+                          {sender?.profileImageURL ? 
+                            <img src={sender.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
+                            sender?.avatar || '👤'
+                          }
+                        </div>
                         <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm">
                         {notifIcon[notif.type]}
                         </div>
@@ -1313,18 +1412,33 @@ const EdgeApp = () => {
   };
 
   const ProfilePage = () => {
-    const fileInputRef = useRef(null);
+    const profileImageRef = useRef(null);
+    const coverImageRef = useRef(null);
 
-    const handleAvatarUpload = (e) => {
+    const handleProfileImageUpload = (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          setProfileForm(prev => ({ ...prev, avatar: event.target.result }));
+          setProfileForm(prev => ({ ...prev, profileImageURL: event.target.result }));
         };
         reader.readAsDataURL(file);
       }
     };
+
+    const handleCoverImageUpload = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setProfileForm(prev => ({ ...prev, coverImageURL: event.target.result }));
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+
+    const currentCoverImage = isEditingProfile ? profileForm.coverImageURL : currentUser?.coverImageURL;
+    const currentProfileImage = isEditingProfile ? profileForm.profileImageURL : currentUser?.profileImageURL;
 
     return (
     <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-50 overflow-y-auto animate-fade-in no-scrollbar">
@@ -1337,27 +1451,46 @@ const EdgeApp = () => {
                 </div>
             </div>
 
-            <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient">
-                <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in cursor-pointer" onClick={() => isEditingProfile && fileInputRef.current?.click()}>
-                    {isEditingProfile ? (
-                        typeof profileForm.avatar === 'string' && profileForm.avatar.startsWith('data:') ? 
-                          <img src={profileForm.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" /> :
-                          profileForm.avatar
+            <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient overflow-hidden group">
+                {currentCoverImage && (
+                  <img src={currentCoverImage} alt="Cover" className="w-full h-full object-cover" />
+                )}
+                {isEditingProfile && (
+                  <button 
+                    onClick={() => coverImageRef.current?.click()}
+                    className="absolute top-4 right-4 p-3 bg-black/60 hover:bg-black/80 text-white rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all active:scale-95"
+                  >
+                    <Camera size={20} />
+                  </button>
+                )}
+                <input type="file" ref={coverImageRef} onChange={handleCoverImageUpload} accept="image/*" hidden />
+                
+                <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in overflow-hidden group/avatar">
+                    {currentProfileImage ? (
+                      <img src={currentProfileImage} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                        typeof currentUser?.avatar === 'string' && currentUser.avatar.startsWith('data:') ? 
-                          <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" /> :
-                          currentUser?.avatar
+                      <span className="text-6xl">{isEditingProfile ? profileForm.avatar : currentUser?.avatar}</span>
                     )}
-                    <input type="file" ref={fileInputRef} onChange={handleAvatarUpload} accept="image/*" hidden />
+                    {isEditingProfile && (
+                      <button 
+                        onClick={() => profileImageRef.current?.click()}
+                        className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-all"
+                      >
+                        <Camera size={28} className="text-white" />
+                      </button>
+                    )}
                 </div>
+                <input type="file" ref={profileImageRef} onChange={handleProfileImageUpload} accept="image/*" hidden />
             </div>
 
             <div className="pt-20 px-6 pb-6">
                 <div className="flex justify-end mb-4">
                     {isEditingProfile ? (
                         <div className="flex gap-2 animate-slide-in-right">
-                            <button onClick={() => { setIsEditingProfile(false); setProfileForm(currentUser); }} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all">Cancel</button>
-                            <button onClick={handleSaveProfile} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:shadow-xl active:scale-95 transition-all">Save</button>
+                            <button onClick={() => { setIsEditingProfile(false); setProfileForm({ name: currentUser.name, bio: currentUser.bio, avatar: currentUser.avatar, email: currentUser.email || '', profileImageURL: currentUser.profileImageURL || '', coverImageURL: currentUser.coverImageURL || '' }); }} disabled={isSaving} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50">Cancel</button>
+                            <button onClick={handleSaveProfile} disabled={isSaving} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
+                              {isSaving ? <LoadingSpinner /> : 'Save'}
+                            </button>
                         </div>
                     ) : (
                         <button onClick={() => setIsEditingProfile(true)} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white border-2 border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all animate-slide-in-left">Edit profile</button>
@@ -1366,10 +1499,10 @@ const EdgeApp = () => {
                 
                 {isEditingProfile ? (
                     <div className="space-y-4 animate-fade-in">
-                        <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
+                        <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} placeholder="Name" className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
                         <p className="text-slate-500 dark:text-slate-400 text-lg px-4">{currentUser?.username}</p>
-                        <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none resize-none" rows={3}/>
-                        <input type="email" placeholder="Add your email" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
+                        <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} placeholder="Bio" className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none resize-none" rows={3}/>
+                        <input type="email" placeholder="Email (optional)" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
                     </div>
                 ) : (
                     <div className="animate-slide-in-up">
@@ -1408,7 +1541,7 @@ const EdgeApp = () => {
                 localStorage.setItem('edge-currentUser', JSON.stringify(updatedUser));
                 
                 await apiRequest('PUT', 'users', { darkMode: value }, currentUser.id);
-                showToast(`Dark mode ${value ? 'enabled' : 'disabled'}`);
+                showToast(`${value ? 'Dark' : 'Light'} mode enabled`);
             } catch (error) {
                 showToast('Failed to save preference.', 'error');
                 const oldSettings = { ...settings };
@@ -1471,7 +1604,12 @@ const EdgeApp = () => {
           >
             <div className="flex items-center gap-4">
               <div className="relative">
-                <div className="text-5xl">{user.avatar}</div>
+                <div className="text-5xl">
+                  {user.profileImageURL ? 
+                    <img src={user.profileImageURL} alt="Avatar" className="w-14 h-14 rounded-full object-cover" /> :
+                    user.avatar
+                  }
+                </div>
                 {index < 3 && (
                   <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
                     index === 0 ? 'bg-amber-500' : index === 1 ? 'bg-slate-400' : 'bg-orange-400'
@@ -1553,7 +1691,12 @@ const EdgeApp = () => {
                 }}
               >
                 <div className="flex items-center gap-4">
-                  <div className="text-4xl">{user.avatar}</div>
+                  <div className="text-4xl">
+                    {user.profileImageURL ? 
+                      <img src={user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                      user.avatar
+                    }
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-bold text-slate-900 dark:text-white truncate">{user.name}</span>
@@ -1586,7 +1729,7 @@ const EdgeApp = () => {
     const userPosts = posts.filter(p => p.userId === user.id);
 
     return (
-      <div className="fixed inset-0bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
+      <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
           <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-4">
@@ -1606,11 +1749,15 @@ const EdgeApp = () => {
           </div>
 
           <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient">
-            <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in">
-              {typeof user.avatar === 'string' && user.avatar.startsWith('data:') ? 
-                <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" /> :
+            {user.coverImageURL && (
+              <img src={user.coverImageURL} alt="Cover" className="w-full h-full object-cover" />
+            )}
+            <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in overflow-hidden">
+              {user.profileImageURL ? (
+                <img src={user.profileImageURL} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
                 user.avatar
-              }
+              )}
             </div>
           </div>
 
@@ -1685,21 +1832,36 @@ const EdgeApp = () => {
               conversations.map((conv, index) => (
                 <div
                   key={conv.id}
-                  onClick={() => setSelectedConversation(conv)}
-                  className={`p-5 border-b border-slate-100 dark:border-slate-700/50 cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 animate-slide-in-left ${
+                  className={`p-5 border-b border-slate-100 dark:border-slate-700/50 transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 animate-slide-in-left group ${
                     selectedConversation?.id === conv.id ? 'bg-slate-100 dark:bg-slate-800/50' : ''
                   }`}
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="text-4xl">{conv.user.avatar}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-slate-900 dark:text-white truncate">{conv.user.name}</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{formatTimestamp(conv.timestamp)}</span>
+                    <button 
+                      onClick={() => setSelectedConversation(conv)}
+                      className="flex items-center gap-4 flex-1 min-w-0"
+                    >
+                      <div className="text-4xl">
+                        {conv.user.profileImageURL ? 
+                          <img src={conv.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                          conv.user.avatar
+                        }
                       </div>
-                      <p className="text-slate-600 dark:text-slate-400 text-sm truncate">{conv.lastMessage || 'Start a conversation'}</p>
-                    </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-slate-900 dark:text-white truncate">{conv.user.name}</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{formatTimestamp(conv.timestamp)}</span>
+                        </div>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm truncate">{conv.lastMessage || 'Start a conversation'}</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteConversation(conv.id)}
+                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full opacity-0 group-hover:opacity-100 transition-all active:scale-95"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                     {conv.unread > 0 && (
                       <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-500 text-white rounded-full text-xs font-bold flex items-center justify-center animate-bounce-in">
                         {conv.unread}
@@ -1732,7 +1894,12 @@ const EdgeApp = () => {
                   }
                 }}
               >
-                <div className="text-4xl">{selectedConversation.user.avatar}</div>
+                <div className="text-4xl">
+                  {selectedConversation.user.profileImageURL ? 
+                    <img src={selectedConversation.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                    selectedConversation.user.avatar
+                  }
+                </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white">{selectedConversation.user.name}</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">{selectedConversation.user.username}</p>
@@ -1827,11 +1994,33 @@ const EdgeApp = () => {
   };
 
   const GroupChatPage = () => {
+    const [localGroupChatMessage, setLocalGroupChatMessage] = useState('');
+    
     useEffect(() => {
       if (groupChatScrollRef.current) {
         groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
       }
     }, [groupMessages]);
+
+    const handleSendLocal = () => {
+      if (!localGroupChatMessage.trim() || !currentUser) return;
+      
+      const newMessage = {
+        userId: currentUser.id,
+        text: localGroupChatMessage,
+        timestamp: new Date().toISOString(),
+        user: currentUser
+      };
+      
+      setGroupMessages(prev => [...prev, newMessage]);
+      setLocalGroupChatMessage('');
+      
+      setTimeout(() => {
+        if (groupChatScrollRef.current) {
+          groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
+        }
+      }, 100);
+    };
 
     return (
       <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-50 flex flex-col animate-fade-in">
@@ -1863,7 +2052,12 @@ const EdgeApp = () => {
                   style={{ animationDelay: `${index * 30}ms` }}
                 >
                   {!isOwnMessage && (
-                    <div className="text-3xl mr-3">{msg.user?.avatar}</div>
+                    <div className="text-3xl mr-3">
+                      {msg.user?.profileImageURL ? 
+                        <img src={msg.user.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
+                        msg.user?.avatar
+                      }
+                    </div>
                   )}
                   <div className={`max-w-xs lg:max-w-md ${
                     isOwnMessage 
@@ -1888,19 +2082,19 @@ const EdgeApp = () => {
           <div className="flex gap-3">
             <input
               type="text"
-              value={groupChatMessage}
-              onChange={(e) => setGroupChatMessage(e.target.value)}
+              value={localGroupChatMessage}
+              onChange={(e) => setLocalGroupChatMessage(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === 'Enter' && groupChatMessage.trim()) {
-                  handleSendGroupMessage();
+                if (e.key === 'Enter' && localGroupChatMessage.trim()) {
+                  handleSendLocal();
                 }
               }}
               placeholder="Message the team..."
               className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-5 py-3 border-2 border-transparent focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
             />
             <button
-              onClick={handleSendGroupMessage}
-              disabled={!groupChatMessage.trim()}
+              onClick={handleSendLocal}
+              disabled={!localGroupChatMessage.trim()}
               className="px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={20} />
@@ -1998,8 +2192,8 @@ const EdgeApp = () => {
                 className="text-3xl hover:scale-110 active:scale-95 transition-transform"
               >
                 {isAuthenticated && currentUser ? (
-                    typeof currentUser.avatar === 'string' && currentUser.avatar.startsWith('data:') ? 
-                    <img src={currentUser.avatar} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
+                    currentUser.profileImageURL ? 
+                    <img src={currentUser.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
                     currentUser.avatar
                 ) : <User className="w-10 h-10 rounded-full p-2 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"/>
                 }
@@ -2009,8 +2203,8 @@ const EdgeApp = () => {
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800/50">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="text-4xl">
-                        {typeof currentUser?.avatar === 'string' && currentUser.avatar.startsWith('data:') ? 
-                          <img src={currentUser.avatar} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                        {currentUser?.profileImageURL ? 
+                          <img src={currentUser.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                           currentUser?.avatar
                         }
                       </div>
@@ -2075,7 +2269,7 @@ const EdgeApp = () => {
                   ))}
                   {filteredAndSortedPosts.length === 0 && (
                     <div className="text-center py-16 animate-fade-in">
-                      <div className="text-7xl mb-4">📭</div>
+                      <div className="text-7xl mb-4">🔭</div>
                       <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">No posts yet</h3>
                       <p className="text-slate-600 dark:text-slate-400">Be the first to share something!</p>
                     </div>
@@ -2127,7 +2321,8 @@ const EdgeApp = () => {
 
       {showAuthModal && <AuthModal onLogin={handleLogin} onSignup={handleSignup} onClose={() => setShowAuthModal(false)} />}
       {showCreateModal && <CreateModal onPost={handlePostSubmit} postToEdit={editingPost} onClose={() => { setShowCreateModal(false); setEditingPost(null); }} />}
-      {showDeleteConfirm && <ConfirmationModal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} onConfirm={confirmDelete} title="Delete Post?" message="This action cannot be undone." />}
+      {showDeleteConfirm && <ConfirmationModal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} onConfirm={confirmDelete} title="Delete Post?" message="This action cannot be undone." isLoading={isSaving} />}
+      {showDeleteConversation && <ConfirmationModal isOpen={showDeleteConversation} onClose={() => setShowDeleteConversation(false)} onConfirm={confirmDeleteConversation} title="Delete Conversation?" message="This action cannot be undone." isLoading={isSaving} />}
       {showProfilePage && currentUser && <ProfilePage />}
       {showSettingsPage && isAuthenticated && <SettingsPage />}
       {showMessagesPage && isAuthenticated && <MessagesPage />}
