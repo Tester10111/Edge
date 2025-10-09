@@ -1,51 +1,35 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Heart, MessageCircle, Plus, Search, Home, User, X, Send, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Users, Trophy, Target, Clock, Flame, Camera, Loader } from 'lucide-react';
-import Cropper from 'react-easy-crop';  // Note: Install react-easy-crop via npm/yarn
+import { Heart, MessageCircle, Plus, Search, Home, User, X, Send, MoreVertical, Image as ImageIcon, CheckCircle, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, Users, Trophy, Camera, Loader, Zap } from 'lucide-react';
+import Cropper from 'react-easy-crop';
 
-// --- IMPORTANT: Set your Google Apps Script Web App URL here ---
 const SCRIPT_URL = '/api';
 
-// --- Helper Functions ---
 const apiRequest = async (method, path, data = null, id = null) => {
-    const requestBody = { method, path, id, data };
-    
-    console.log('🚀 API Request:', { url: SCRIPT_URL, body: requestBody });
+  const requestBody = { method, path, id, data };
 
-    try {
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-            redirect: 'follow'
-        });
+  try {
+    const response = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      redirect: 'follow'
+    });
 
-        console.log('✅ Response Status:', response.status);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Error Response:', errorText);
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-        
-        const responseText = await response.text();
-        console.log('📦 Response Data:', responseText);
-        
-        const jsonData = responseText ? JSON.parse(responseText) : { status: 'success' };
-
-        if (jsonData.status === 'error') {
-            throw new Error(jsonData.message || 'Unknown error');
-        }
-
-        return jsonData.data !== undefined ? jsonData.data : jsonData;
-
-    } catch (error) {
-        console.error('💥 Full Error:', {
-            message: error.message,
-            stack: error.stack,
-            url: SCRIPT_URL
-        });
-        throw error;
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+
+    const responseText = await response.text();
+    const jsonData = responseText ? JSON.parse(responseText) : { status: 'success' };
+
+    if (jsonData.status === 'error') {
+      throw new Error(jsonData.message || 'Unknown error');
+    }
+
+    return jsonData.data !== undefined ? jsonData.data : jsonData;
+  } catch (error) {
+    throw error;
+  }
 };
 
 const formatTimestamp = (isoString) => {
@@ -59,7 +43,7 @@ const formatTimestamp = (isoString) => {
       minute: '2-digit',
       hour12: true,
     });
-    
+
     const formattedDate = date.toLocaleDateString('en-US', {
       year: '2-digit',
       month: '2-digit',
@@ -68,61 +52,93 @@ const formatTimestamp = (isoString) => {
 
     return `${formattedTime} ${formattedDate}`;
   } catch (error) {
-    console.error("Error formatting timestamp:", isoString, error);
     return '...';
   }
 };
 
-const compressImage = (imageData, maxWidth = 800, quality = 0.8) => {
+const toBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(blob);
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+});
+
+const compressToBlob = (input, maxBytes = 500 * 1024) => {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = imageData;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
+    let blobInput;
+    if (typeof input === 'string') { // dataURL
+      fetch(input).then(res => res.blob()).then(b => {
+        blobInput = b;
+        proceed();
+      }).catch(reject);
+      return;
+    } else if (input instanceof File || input instanceof Blob) {
+      blobInput = input;
+      proceed();
+    } else {
+      reject(new Error('Invalid input'));
+      return;
+    }
 
-      if (width > maxWidth) {
-        height = (height * maxWidth) / width;
-        width = maxWidth;
-      }
+    function proceed() {
+      const img = new Image();
+      const reader = new FileReader();
+      reader.readAsDataURL(blobInput);
+      reader.onload = () => {
+        img.src = reader.result;
+      };
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        let scale = 1;
 
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
+        const compress = (quality) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = width * scale;
+          canvas.height = height * scale;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          return new Promise((res) => {
+            canvas.toBlob(res, 'image/jpeg', quality);
+          });
+        };
 
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            reject(new Error('Canvas to Blob conversion failed.'));
-            return;
-          }
-          const compressedReader = new FileReader();
-          compressedReader.readAsDataURL(blob);
-          compressedReader.onloadend = () => {
-            const result = compressedReader.result;
-            // Improved: Recursively reduce quality if base64 is too large (>40,000 chars for safety)
-            if (result.length > 40000 && quality > 0.3) {
-              compressImage(imageData, maxWidth, quality - 0.1).then(resolve).catch(reject);
+        const binarySearchQuality = async () => {
+          let low = 0.1;
+          let high = 1;
+          let bestBlob = null;
+          for (let i = 0; i < 10; i++) {
+            const mid = (low + high) / 2;
+            const blob = await compress(mid);
+            if (blob && blob.size <= maxBytes) {
+              bestBlob = blob;
+              low = mid;
             } else {
-              resolve(result);
+              high = mid;
             }
-          };
-          compressedReader.onerror = () => {
-            reject(new Error('Failed to read compressed blob.'));
-          };
-        },
-        'image/jpeg',
-        quality
-      );
-    };
-    img.onerror = reject;
+          }
+          return bestBlob;
+        };
+
+        const tryCompress = async () => {
+          let blob = await binarySearchQuality();
+          while (!blob && scale > 0.1) {
+            scale *= 0.8;
+            blob = await binarySearchQuality();
+          }
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Could not compress image'));
+          }
+        };
+
+        tryCompress();
+      };
+      img.onerror = reject;
+    }
   });
 };
-
-
-// --- UI Components ---
 
 const LoadingSpinner = () => (
   <div className="inline-flex items-center justify-center">
@@ -152,50 +168,50 @@ const SkeletonCard = () => (
 );
 
 const Badge = ({ name }) => {
-    const badgeConfig = {
-        'Regional Manager': { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-500/30', icon: '🏢' },
-        'Branch Manager': { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-500/30', icon: '📊' },
-        'Warehouse Associate': {bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: '📦' },
-        'Developer': { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: '💻' },
-        'OG': { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-500/30', icon: '👑'},
-        'Pro Stacker': { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', border: 'border-cyan-200 dark:border-cyan-500/30', icon: '⭐' },
-        'Picker': { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-500/30', icon: '🎯' },
-        'Receiver': { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-500/30', icon: '📥' },
-    };
-    const config = badgeConfig[name] || { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: null };
-    
-    return (
-        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border ${config.bg} ${config.text} ${config.border} animate-scale-in shadow-sm hover:shadow-md transition-shadow`}>
-            {config.icon}
-            <span>{name}</span>
-        </span>
-    );
+  const badgeConfig = {
+    'Regional Manager': { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-500/30', icon: '🏢' },
+    'Branch Manager': { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-500/30', icon: '📊' },
+    'Warehouse Associate': {bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: '📦' },
+    'Developer': { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: '💻' },
+    'OG': { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-500/30', icon: '👑'},
+    'Pro Stacker': { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', border: 'border-cyan-200 dark:border-cyan-500/30', icon: '⭐' },
+    'Picker': { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-500/30', icon: '🎯' },
+    'Receiver': { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-500/30', icon: '📥' },
+  };
+  const config = badgeConfig[name] || { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: null };
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border ${config.bg} ${config.text} ${config.border} animate-scale-in shadow-sm hover:shadow-md transition-shadow`}>
+      {config.icon}
+      <span>{name}</span>
+    </span>
+  );
 };
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, isLoading }) => {
-    if (!isOpen) return null;
+  if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4 animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
-                <div className="text-center">
-                    <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce-in">
-                        <Trash2 size={32} />
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{title}</h2>
-                    <p className="text-slate-600 dark:text-slate-400">{message}</p>
-                </div>
-                <div className="flex gap-4 mt-8">
-                    <button onClick={onClose} disabled={isLoading} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all disabled:opacity-50">
-                        Cancel
-                    </button>
-                    <button onClick={onConfirm} disabled={isLoading} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                        {isLoading ? <LoadingSpinner /> : 'Delete'}
-                    </button>
-                </div>
-            </div>
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4 animate-fade-in" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce-in">
+            <Trash2 size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{title}</h2>
+          <p className="text-slate-600 dark:text-slate-400">{message}</p>
         </div>
-    );
+        <div className="flex gap-4 mt-8">
+          <button onClick={onClose} disabled={isLoading} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={isLoading} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+            {isLoading ? <LoadingSpinner /> : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const CropModal = ({ imageSrc, cropType, onCropComplete, onClose }) => {
@@ -203,16 +219,16 @@ const CropModal = ({ imageSrc, cropType, onCropComplete, onClose }) => {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
-  const aspect = cropType === 'profile' ? 1 : cropType === 'cover' ? 16/9 : null;
+  const aspect = cropType === 'profile' ? 1 : cropType === 'cover' ? 16/9 : 4/3;
   const cropShape = cropType === 'profile' ? 'round' : 'rect';
 
   const onCrop = useCallback(async () => {
     try {
-      const croppedImage = await getCroppedImg(imageSrc, croppedAreaPixels);
-      onCropComplete(croppedImage);
+      const croppedBlob = await getCroppedBlob(imageSrc, croppedAreaPixels);
+      onCropComplete(croppedBlob);
       onClose();
     } catch (e) {
-      console.error(e);
+      onClose();
     }
   }, [croppedAreaPixels, imageSrc, onCropComplete, onClose]);
 
@@ -241,7 +257,7 @@ const CropModal = ({ imageSrc, cropType, onCropComplete, onClose }) => {
   );
 };
 
-const getCroppedImg = (imageSrc, pixelCrop) => {
+const getCroppedBlob = (imageSrc, pixelCrop) => {
   return new Promise((resolve) => {
     const image = new Image();
     image.src = imageSrc;
@@ -261,11 +277,7 @@ const getCroppedImg = (imageSrc, pixelCrop) => {
         pixelCrop.width,
         pixelCrop.height
       );
-      canvas.toBlob((blob) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = () => resolve(reader.result);
-      }, 'image/jpeg', 0.8);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
     };
   });
 };
@@ -305,7 +317,7 @@ const EdgeApp = () => {
   const [cropImage, setCropImage] = useState(null);
   const [cropType, setCropType] = useState(null);
   const [onCropCompleteCallback, setOnCropCompleteCallback] = useState(null);
-  
+
   const [posts, setPosts] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
@@ -315,11 +327,11 @@ const EdgeApp = () => {
   const [messages, setMessages] = useState([]);
   const [groupMessages, setGroupMessages] = useState([]);
   const [leaderboardData, setLeaderboardData] = useState([]);
-  
+
   const [currentUser, setCurrentUser] = useState(null);
 
   const [settings, setSettings] = useState({
-      darkMode: false,
+    darkMode: false,
   });
 
   const scrollRef = useRef(null);
@@ -328,7 +340,7 @@ const EdgeApp = () => {
   const profileMenuRef = useRef(null);
   const notificationsRef = useRef(null);
   const groupChatScrollRef = useRef(null);
-  
+
   const [profileForm, setProfileForm] = useState({
     name: '',
     bio: '',
@@ -342,7 +354,7 @@ const EdgeApp = () => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }, []);
-  
+
   const handleGuestAction = useCallback(() => {
     setShowAuthModal(true);
   }, []);
@@ -350,102 +362,95 @@ const EdgeApp = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-        if (SCRIPT_URL === 'YOUR_WEB_APP_URL_HERE') {
-            showToast("Please set your Google Apps Script URL", "error");
-            console.error("SCRIPT_URL is not set in edge.jsx");
-            setIsLoading(false);
-            return;
-        }
-        const [usersData, postsData, interactionsData, commentsData, convosData, messagesData, notificationsData, groupChatData] = await Promise.all([
-            apiRequest('GET', 'users'),
-            apiRequest('GET', 'posts'),
-            apiRequest('GET', 'interactions'),
-            apiRequest('GET', 'comments'),
-            apiRequest('GET', 'conversations'),
-            apiRequest('GET', 'messages'),
-            apiRequest('GET', 'notifications'),
-            apiRequest('GET', 'groupchat'),
-        ]);
+      const [usersData, postsData, interactionsData, commentsData, convosData, messagesData, notificationsData, groupChatData] = await Promise.all([
+        apiRequest('GET', 'users'),
+        apiRequest('GET', 'posts'),
+        apiRequest('GET', 'interactions'),
+        apiRequest('GET', 'comments'),
+        apiRequest('GET', 'conversations'),
+        apiRequest('GET', 'messages'),
+        apiRequest('GET', 'notifications'),
+        apiRequest('GET', 'groupchat'),
+      ]);
 
-        const enrichedPosts = postsData
-          .filter(post => post.type === 'post' || !post.type)
-          .map(post => {
-            let imageArray = [];
-            if (post.images) {
-                try {
-                    imageArray = typeof post.images === 'string' ? JSON.parse(post.images) : post.images;
-                } catch (e) {
-                    imageArray = [];
-                }
+      const enrichedPosts = postsData
+        .filter(post => post.type === 'post' || !post.type)
+        .map(post => {
+          let imageArray = [];
+          if (post.images) {
+            try {
+              imageArray = typeof post.images === 'string' ? JSON.parse(post.images) : post.images;
+            } catch (e) {
+              imageArray = [];
             }
+          }
 
-            return {
-                ...post,
-                images: Array.isArray(imageArray) ? imageArray : [],
-                user: usersData.find(u => u.id === post.userId),
-                commentsList: commentsData.filter(c => c.postId === post.id)
-                  .map(c => ({...c, user: usersData.find(u => u.id === c.userId)})),
-                likes: interactionsData.filter(i => i.postId === post.id && i.interactionType === 'like').length,
-                liked: false
-            };
+          return {
+            ...post,
+            images: Array.isArray(imageArray) ? imageArray : [],
+            user: usersData.find(u => u.id === post.userId),
+            commentsList: commentsData.filter(c => c.postId === post.id)
+              .map(c => ({...c, user: usersData.find(u => u.id === c.userId)})),
+            likes: interactionsData.filter(i => i.postId === post.id && i.interactionType === 'like').length,
+            liked: false
+          };
         });
 
-        const enrichedConvos = convosData.map(conv => {
-            const participantIds = (conv.participantIds || '').split(',').map(s => s.trim()).filter(Boolean);
-            const otherUserId = participantIds.find(pid => pid !== currentUser?.id) || participantIds[0];
-            const otherUser = usersData.find(u => u.id === otherUserId);
-            const convMessages = messagesData.filter(m => m.conversationId === conv.id)
-                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            const lastMsg = convMessages[convMessages.length - 1];
-
-            return {
-                ...conv,
-                user: otherUser || { name: 'Unknown', avatar: '👤', username: '@unknown' },
-                userId: otherUserId,
-                messages: convMessages,
-                lastMessage: lastMsg ? (lastMsg.type === 'image' ? '📷 Image' : lastMsg.text) : '',
-                timestamp: conv.lastMessageTimestamp || conv.timestamp,
-                unread: 0
-            };
-        });
-
-        const enrichedGroupMessages = groupChatData
-          .map(msg => ({
-            ...msg,
-            user: usersData.find(u => u.id === msg.senderId)
-          }))
+      const enrichedConvos = convosData.map(conv => {
+        const participantIds = (conv.participantIds || '').split(',').map(s => s.trim()).filter(Boolean);
+        const otherUserId = participantIds.find(pid => pid !== currentUser?.id) || participantIds[0];
+        const otherUser = usersData.find(u => u.id === otherUserId);
+        const convMessages = messagesData.filter(m => m.conversationId === conv.id)
           .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const lastMsg = convMessages[convMessages.length - 1];
 
-        const leaderboard = usersData.map(user => ({
-            ...user,
-            linesPickedToday: Math.floor(Math.random() * 500) + 100,
-            linesPickedWeek: Math.floor(Math.random() * 3000) + 500,
-            avgSpeed: (Math.random() * 50 + 50).toFixed(1),
-            streak: Math.floor(Math.random() * 30),
-            achievements: Math.floor(Math.random() * 15)
-        })).sort((a, b) => b.linesPickedWeek - a.linesPickedWeek);
+        return {
+          ...conv,
+          user: otherUser || { name: 'Unknown', avatar: '👤', username: '@unknown' },
+          userId: otherUserId,
+          messages: convMessages,
+          lastMessage: lastMsg ? (lastMsg.type === 'image' ? '📷 Image' : lastMsg.text) : '',
+          timestamp: conv.lastMessageTimestamp || conv.timestamp,
+          unread: 0
+        };
+      });
 
-        setAllUsers(usersData);
-        setPosts(enrichedPosts);
-        setInteractions(interactionsData);
-        setComments(commentsData);
-        setMessages(messagesData);
-        setConversations(enrichedConvos);
-        setNotifications(notificationsData);
-        setGroupMessages(enrichedGroupMessages);
-        setLeaderboardData(leaderboard);
-        
+      const enrichedGroupMessages = groupChatData
+        .map(msg => ({
+          ...msg,
+          user: usersData.find(u => u.id === msg.senderId)
+        }))
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      const leaderboard = usersData.map(user => ({
+        ...user,
+        linesPickedToday: Math.floor(Math.random() * 500) + 100,
+        linesPickedWeek: Math.floor(Math.random() * 3000) + 500,
+        avgSpeed: (Math.random() * 50 + 50).toFixed(1),
+        streak: Math.floor(Math.random() * 30),
+        achievements: Math.floor(Math.random() * 15)
+      })).sort((a, b) => b.linesPickedWeek - a.linesPickedWeek);
+
+      setAllUsers(usersData);
+      setPosts(enrichedPosts);
+      setInteractions(interactionsData);
+      setComments(commentsData);
+      setMessages(messagesData);
+      setConversations(enrichedConvos);
+      setNotifications(notificationsData);
+      setGroupMessages(enrichedGroupMessages);
+      setLeaderboardData(leaderboard);
+
     } catch (error) {
-        showToast("Failed to fetch data from database.", "error");
-        console.error(error);
+      showToast("Failed to fetch data.", "error");
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   }, [showToast, currentUser?.id]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
     try {
@@ -464,21 +469,20 @@ const EdgeApp = () => {
           profileImageURL: user.profileImageURL || '',
           coverImageURL: user.coverImageURL || ''
         });
-        
+
         const settingsToApply = savedSettings ? JSON.parse(savedSettings) : {
-            darkMode: user.darkMode || false,
+          darkMode: user.darkMode || false,
         };
         setSettings(settingsToApply);
       } else {
         const guestSettings = localStorage.getItem('edge-settings');
-        if(guestSettings){
-            setSettings(JSON.parse(guestSettings));
+        if (guestSettings) {
+          setSettings(JSON.parse(guestSettings));
         }
       }
     } catch (error) {
-        console.error("Failed to load data from localStorage", error);
-        localStorage.removeItem('edge-currentUser');
-        localStorage.removeItem('edge-settings');
+      localStorage.removeItem('edge-currentUser');
+      localStorage.removeItem('edge-settings');
     }
   }, []);
 
@@ -505,13 +509,13 @@ const EdgeApp = () => {
 
   const useOutsideAlerter = (ref, action) => {
     useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (ref.current && !ref.current.contains(event.target)) {
-                action();
-            }
+      const handleClickOutside = (event) => {
+        if (ref.current && !ref.current.contains(event.target)) {
+          action();
         }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+      }
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [ref, action]);
   }
 
@@ -545,7 +549,7 @@ const EdgeApp = () => {
   }, [pullDistance]);
 
   const handleRefresh = useCallback(async () => {
-    if(isRefreshing) return;
+    if (isRefreshing) return;
     setIsRefreshing(true);
     await fetchData();
     setIsRefreshing(false);
@@ -567,8 +571,8 @@ const EdgeApp = () => {
     scrollElement?.addEventListener('scroll', handleScroll);
     return () => scrollElement?.removeEventListener('scroll', handleScroll);
   }, []);
-  
-   useEffect(() => {
+
+  useEffect(() => {
     if (settings.darkMode) {
       document.documentElement.classList.add('dark');
     } else {
@@ -588,7 +592,7 @@ const EdgeApp = () => {
 
     const userPassword = String(user.password || '').trim();
     const inputPassword = String(formData.password || '').trim();
-    
+
     if (!userPassword || userPassword !== inputPassword) {
       showToast('Incorrect password.', 'error');
       return;
@@ -610,16 +614,16 @@ const EdgeApp = () => {
     localStorage.setItem('edge-currentUser', JSON.stringify(user));
     localStorage.setItem('edge-settings', JSON.stringify(userSettings));
     showToast(`Welcome back, ${user.name}!`);
-    
+
     fetchData();
   }, [allUsers, showToast, fetchData]);
 
   const handleSignup = useCallback(async (formData) => {
-    if (!formData.name || !formData.username || !formData.password) { 
-        showToast('Please fill in Name, Username, and Password', 'error'); 
-        return; 
+    if (!formData.name || !formData.username || !formData.password) {
+      showToast('Please fill in Name, Username, and Password', 'error');
+      return;
     }
-    
+
     const newUser = {
       name: formData.name,
       username: '@' + formData.username,
@@ -635,125 +639,124 @@ const EdgeApp = () => {
     };
 
     try {
-        const result = await apiRequest('POST', 'users', newUser);
-        if (result.status === 'success' || result.id) {
-            const userWithId = { ...newUser, id: result.id || result.data?.id };
-            setAllUsers(prev => [...prev, userWithId]);
-            setCurrentUser(userWithId);
-            setProfileForm({
-              name: userWithId.name,
-              bio: userWithId.bio,
-              avatar: userWithId.avatar,
-              email: userWithId.email || '',
-              profileImageURL: '',
-              coverImageURL: ''
-            });
-            setIsAuthenticated(true);
-            setShowAuthModal(false);
-            const userSettings = { darkMode: false };
-            setSettings(userSettings);
-            localStorage.setItem('edge-currentUser', JSON.stringify(userWithId));
-            localStorage.setItem('edge-settings', JSON.stringify(userSettings));
-            showToast('Account created! Welcome to Edge! 🎉');
-        }
+      const result = await apiRequest('POST', 'users', newUser);
+      if (result.status === 'success' || result.id) {
+        const userWithId = { ...newUser, id: result.id || result.data?.id };
+        setAllUsers(prev => [...prev, userWithId]);
+        setCurrentUser(userWithId);
+        setProfileForm({
+          name: userWithId.name,
+          bio: userWithId.bio,
+          avatar: userWithId.avatar,
+          email: userWithId.email || '',
+          profileImageURL: '',
+          coverImageURL: ''
+        });
+        setIsAuthenticated(true);
+        setShowAuthModal(false);
+        const userSettings = { darkMode: false };
+        setSettings(userSettings);
+        localStorage.setItem('edge-currentUser', JSON.stringify(userWithId));
+        localStorage.setItem('edge-settings', JSON.stringify(userSettings));
+        showToast('Account created! Welcome to Edge! 🎉');
+      }
     } catch (error) {
-        showToast('Failed to create account.', 'error');
+      showToast('Failed to create account.', 'error');
     }
   }, [showToast]);
 
   const handleLogout = useCallback(() => {
-    setIsAuthenticated(false); 
+    setIsAuthenticated(false);
     setCurrentUser(null);
-    setShowProfileMenu(false); 
-    setShowProfilePage(false); 
+    setShowProfileMenu(false);
+    setShowProfilePage(false);
     localStorage.removeItem('edge-currentUser');
     setSettings({ darkMode: false });
     showToast('Logged out successfully');
   }, [showToast]);
-  
+
   const handleSaveProfile = useCallback(async () => {
-      if (!currentUser) {
-          showToast('No user logged in', 'error');
-          return;
-      }
-      
-      setIsSaving(true);
-      
-      try {
-        const updateData = {
-          name: profileForm.name,
-          bio: profileForm.bio,
-          email: profileForm.email,
-          profileImageURL: profileForm.profileImageURL,
-          coverImageURL: profileForm.coverImageURL,
-          avatar: profileForm.avatar
-        };
-        
-        await apiRequest('PUT', 'users', updateData, currentUser.id);
-        const updatedUser = { ...currentUser, ...updateData };
-        setCurrentUser(updatedUser);
-        setAllUsers(prevUsers => prevUsers.map(u => u.id === currentUser.id ? updatedUser : u));
-        localStorage.setItem('edge-currentUser', JSON.stringify(updatedUser));
-        setIsEditingProfile(false);
-        showToast('Profile updated! ✨');
-      } catch (error) {
-        showToast('Failed to update profile.', 'error');
-        console.error(error);
-      } finally {
-        setIsSaving(false);
-      }
+    if (!currentUser) {
+      showToast('No user logged in', 'error');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const updateData = {
+        name: profileForm.name,
+        bio: profileForm.bio,
+        email: profileForm.email,
+        profileImageURL: profileForm.profileImageURL,
+        coverImageURL: profileForm.coverImageURL,
+        avatar: profileForm.avatar
+      };
+
+      await apiRequest('PUT', 'users', updateData, currentUser.id);
+      const updatedUser = { ...currentUser, ...updateData };
+      setCurrentUser(updatedUser);
+      setAllUsers(prevUsers => prevUsers.map(u => u.id === currentUser.id ? updatedUser : u));
+      localStorage.setItem('edge-currentUser', JSON.stringify(updatedUser));
+      setIsEditingProfile(false);
+      showToast('Profile updated! ✨');
+    } catch (error) {
+      showToast('Failed to update profile.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   }, [currentUser, profileForm, showToast]);
-  
+
   const handleLike = useCallback(async (postId) => {
     if (!currentUser) return;
-    
+
     const post = posts.find(p => p.id === postId);
     if (!post) return;
 
     const wasLiked = post.liked;
-    setPosts(currentPosts => 
-      currentPosts.map(p => 
-        p.id === postId ? { ...p, likes: wasLiked ? p.likes - 1 : p.likes + 1, liked: !wasLiked } : p 
+    setPosts(currentPosts =>
+      currentPosts.map(p =>
+        p.id === postId ? { ...p, likes: wasLiked ? p.likes - 1 : p.likes + 1, liked: !wasLiked } : p
       )
     );
-    
+
     try {
-        if(wasLiked) {
-            const likeToDelete = interactions.find(i => i.postId === postId && i.userId === currentUser.id && i.interactionType === 'like');
-            if (likeToDelete) {
-                await apiRequest('DELETE', 'interactions', null, likeToDelete.id);
-                setInteractions(prev => prev.filter(i => i.id !== likeToDelete.id));
-            }
-        } else {
-            const newLike = { postId, userId: currentUser.id, interactionType: 'like' };
-            const result = await apiRequest('POST', 'interactions', newLike);
-            if(result.data || result.id) {
-              const likeWithId = { ...newLike, id: result.id || result.data?.id, timestamp: new Date().toISOString() };
-              setInteractions(prev => [...prev, likeWithId]);
-              
-              if (post.userId !== currentUser.id) {
-                  await apiRequest('POST', 'notifications', {
-                      recipientId: post.userId,
-                      senderId: currentUser.id,
-                      type: 'like',
-                      relatedPostId: postId,
-                      content: `${currentUser.name} liked your post`,
-                      isRead: false,
-                      timestamp: new Date().toISOString()
-                  });
-              }
-            }
+      if (wasLiked) {
+        const likeToDelete = interactions.find(i => i.postId === postId && i.userId === currentUser.id && i.interactionType === 'like');
+        if (likeToDelete) {
+          await apiRequest('DELETE', 'interactions', null, likeToDelete.id);
+          setInteractions(prev => prev.filter(i => i.id !== likeToDelete.id));
         }
+      } else {
+        const newLike = { postId, userId: currentUser.id, interactionType: 'like' };
+        const result = await apiRequest('POST', 'interactions', newLike);
+        if (result.data || result.id) {
+          const likeWithId = { ...newLike, id: result.id || result.data?.id, timestamp: new Date().toISOString() };
+          setInteractions(prev => [...prev, likeWithId]);
+
+          if (post.userId !== currentUser.id) {
+            await apiRequest('POST', 'notifications', {
+              recipientId: post.userId,
+              senderId: currentUser.id,
+              type: 'like',
+              relatedPostId: postId,
+              content: `${currentUser.name} liked your post`,
+              isRead: false,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      }
     } catch (error) {
-        showToast('Like action failed.', 'error');
-        setPosts(currentPosts => 
-          currentPosts.map(p => 
-            p.id === postId ? { ...p, likes: wasLiked ? p.likes + 1 : p.likes - 1, liked: wasLiked } : p 
-          )
-        );
+      showToast('Like action failed.', 'error');
+      setPosts(currentPosts =>
+        currentPosts.map(p =>
+          p.id === postId ? { ...p, likes: wasLiked ? p.likes + 1 : p.likes - 1, liked: wasLiked } : p
+        )
+      );
     }
   }, [posts, interactions, currentUser, showToast]);
-  
+
   const nextImage = useCallback((postId) => {
     const post = posts.find(p => p.id === postId);
     if (!post || !Array.isArray(post.images) || post.images.length === 0) return;
@@ -768,275 +771,271 @@ const EdgeApp = () => {
       return { ...prev, [postId]: newIndex };
     });
   }, [posts]);
-  
+
   const toggleComments = useCallback((postId) => {
-      setExpandedComments(prev => prev === postId ? null : postId);
+    setExpandedComments(prev => prev === postId ? null : postId);
   }, []);
 
   const handlePostSubmit = useCallback(async (postData) => {
-      setIsPosting(true);
-      
-      const dataToSubmit = {
-          ...postData,
-          userId: currentUser.id,
-          type: 'post'
-      };
-      
-      try {
-          if (postData.id) {
-              const result = await apiRequest('PUT', 'posts', dataToSubmit, postData.id);
-              
-              let imageArray = [];
-              if (result.data?.images) {
-                  try {
-                      imageArray = typeof result.data.images === 'string' ? JSON.parse(result.data.images) : result.data.images;
-                  } catch (e) {
-                      imageArray = [];
-                  }
-              }
-              
-              setPosts(posts.map(p => p.id === postData.id ? {
-                  ...p, 
-                  ...result.data, 
-                  images: Array.isArray(imageArray) ? imageArray : [],
-                  user: currentUser
-              } : p));
-              showToast('Post updated successfully!');
-          } else {
-              const result = await apiRequest('POST', 'posts', dataToSubmit);
-              
-              let imageArray = [];
-              if (result.data?.images) {
-                  try {
-                      imageArray = typeof result.data.images === 'string' ? JSON.parse(result.data.images) : result.data.images;
-                  } catch (e) {
-                      imageArray = [];
-                  }
-              }
-              
-              const newPost = {
-                  ...result.data, 
-                  id: result.id || result.data?.id,
-                  images: Array.isArray(imageArray) ? imageArray : [],
-                  user: currentUser, 
-                  commentsList: [], 
-                  likes: 0,
-                  liked: false
-              };
-              setPosts([newPost, ...posts]);
-              showToast('Posted successfully! 🎉');
+    setIsPosting(true);
+
+    const dataToSubmit = {
+      ...postData,
+      userId: currentUser.id,
+      type: 'post'
+    };
+
+    try {
+      if (postData.id) {
+        const result = await apiRequest('PUT', 'posts', dataToSubmit, postData.id);
+
+        let imageArray = [];
+        if (result.data?.images) {
+          try {
+            imageArray = typeof result.data.images === 'string' ? JSON.parse(result.data.images) : result.data.images;
+          } catch (e) {
+            imageArray = [];
           }
-          setShowCreateModal(false);
-          setEditingPost(null);
-      } catch (error) {
-          showToast('Failed to submit post.', 'error');
-          console.error(error);
-      } finally {
-          setIsPosting(false);
+        }
+
+        setPosts(posts.map(p => p.id === postData.id ? {
+          ...p,
+          ...result.data,
+          images: Array.isArray(imageArray) ? imageArray : [],
+          user: currentUser
+        } : p));
+        showToast('Post updated successfully!');
+      } else {
+        const result = await apiRequest('POST', 'posts', dataToSubmit);
+
+        let imageArray = [];
+        if (result.data?.images) {
+          try {
+            imageArray = typeof result.data.images === 'string' ? JSON.parse(result.data.images) : result.data.images;
+          } catch (e) {
+            imageArray = [];
+          }
+        }
+
+        const newPost = {
+          ...result.data,
+          id: result.id || result.data?.id,
+          images: Array.isArray(imageArray) ? imageArray : [],
+          user: currentUser,
+          commentsList: [],
+          likes: 0,
+          liked: false
+        };
+        setPosts([newPost, ...posts]);
+        showToast('Posted successfully! 🎉');
       }
+      setShowCreateModal(false);
+      setEditingPost(null);
+    } catch (error) {
+      showToast('Failed to submit post.', 'error');
+    } finally {
+      setIsPosting(false);
+    }
   }, [currentUser, posts, showToast]);
-  
+
   const handleDeletePost = useCallback((postId) => {
-      setPostToDelete(postId);
-      setShowDeleteConfirm(true);
+    setPostToDelete(postId);
+    setShowDeleteConfirm(true);
   }, []);
 
   const confirmDelete = useCallback(async () => {
-      setIsSaving(true);
-      try {
-          await apiRequest('DELETE', 'posts', null, postToDelete);
-          setPosts(posts.filter(p => p.id !== postToDelete));
-          showToast('Post deleted', 'success');
-      } catch(error) {
-          showToast('Failed to delete post.', 'error');
-      } finally {
-          setIsSaving(false);
-          setShowDeleteConfirm(false);
-          setPostToDelete(null);
-      }
+    setIsSaving(true);
+    try {
+      await apiRequest('DELETE', 'posts', null, postToDelete);
+      setPosts(posts.filter(p => p.id !== postToDelete));
+      showToast('Post deleted', 'success');
+    } catch (error) {
+      showToast('Failed to delete post.', 'error');
+    } finally {
+      setIsSaving(false);
+      setShowDeleteConfirm(false);
+      setPostToDelete(null);
+    }
   }, [postToDelete, posts, showToast]);
 
   const handleEditPost = useCallback((post) => {
-      setEditingPost(post);
-      setShowCreateModal(true);
+    setEditingPost(post);
+    setShowCreateModal(true);
   }, []);
 
   const handleCommentSubmit = useCallback(async (postId, commentText) => {
-    if(!commentText.trim() || !currentUser) return;
-    
+    if (!commentText.trim() || !currentUser) return;
+
     const newCommentData = {
-        postId,
-        userId: currentUser.id,
-        text: commentText,
-        timestamp: new Date().toISOString()
+      postId,
+      userId: currentUser.id,
+      text: commentText,
+      timestamp: new Date().toISOString()
     };
-    
+
     try {
-        const result = await apiRequest('POST', 'comments', newCommentData);
-        const newComment = {
-            ...newCommentData,
-            id: result.id || result.data?.id,
-            user: currentUser
-        };
-        
-        setComments(prev => [...prev, newComment]);
-        
-        setPosts(currentPosts => currentPosts.map(post => {
-            if(post.id === postId) {
-                return {
-                    ...post,
-                    commentsList: [newComment, ...(post.commentsList || [])]
-                }
-            }
-            return post;
-        }));
-        
-        const post = posts.find(p => p.id === postId);
-        if (post && post.userId !== currentUser.id) {
-            await apiRequest('POST', 'notifications', {
-                recipientId: post.userId,
-                senderId: currentUser.id,
-                type: 'comment',
-                relatedPostId: postId,
-                content: `${currentUser.name} commented on your post`,
-                isRead: false,
-                timestamp: new Date().toISOString()
-            });
+      const result = await apiRequest('POST', 'comments', newCommentData);
+      const newComment = {
+        ...newCommentData,
+        id: result.id || result.data?.id,
+        user: currentUser
+      };
+
+      setComments(prev => [...prev, newComment]);
+
+      setPosts(currentPosts => currentPosts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            commentsList: [newComment, ...(post.commentsList || [])]
+          }
         }
-        
+        return post;
+      }));
+
+      const post = posts.find(p => p.id === postId);
+      if (post && post.userId !== currentUser.id) {
+        await apiRequest('POST', 'notifications', {
+          recipientId: post.userId,
+          senderId: currentUser.id,
+          type: 'comment',
+          relatedPostId: postId,
+          content: `${currentUser.name} commented on your post`,
+          isRead: false,
+          timestamp: new Date().toISOString()
+        });
+      }
+
     } catch (error) {
-        showToast('Failed to post comment.', 'error');
-        console.error(error);
+      showToast('Failed to post comment.', 'error');
     }
   }, [currentUser, showToast, posts]);
 
   const handleSendMessage = useCallback(async (conversationId, messageData) => {
-      if (!currentUser) return;
-      
-      try {
-          const newMessage = {
-              conversationId,
-              senderId: currentUser.id,
-              text: messageData.text || '',
-              imageUrl: messageData.image || '',
-              type: messageData.type || 'text',
-              timestamp: new Date().toISOString()
+    if (!currentUser) return;
+
+    try {
+      const newMessage = {
+        conversationId,
+        senderId: currentUser.id,
+        text: messageData.text || '',
+        imageUrl: messageData.image || '',
+        type: messageData.type || 'text',
+        timestamp: new Date().toISOString()
+      };
+
+      const result = await apiRequest('POST', 'messages', newMessage);
+      const messageWithId = {
+        ...newMessage,
+        id: result.id || result.data?.id,
+      };
+
+      setMessages(prev => [...prev, messageWithId]);
+
+      setConversations(prev => prev.map(conv => {
+        if (conv.id === conversationId) {
+          return {
+            ...conv,
+            messages: [...(conv.messages || []), messageWithId],
+            lastMessage: messageData.type === 'image' ? '📷 Image' : messageData.text,
+            timestamp: messageWithId.timestamp
           };
-          
-          const result = await apiRequest('POST', 'messages', newMessage);
-          const messageWithId = {
-              ...newMessage,
-              id: result.id || result.data?.id,
-          };
-          
-          setMessages(prev => [...prev, messageWithId]);
-          
-          setConversations(prev => prev.map(conv => {
-              if (conv.id === conversationId) {
-                  return {
-                      ...conv,
-                      messages: [...(conv.messages || []), messageWithId],
-                      lastMessage: messageData.type === 'image' ? '📷 Image' : messageData.text,
-                      timestamp: messageWithId.timestamp
-                  };
-              }
-              return conv;
-          }));
-          
-          if (selectedConversation?.id === conversationId) {
-              setSelectedConversation(prev => ({
-                  ...prev,
-                  messages: [...(prev.messages || []), messageWithId]
-              }));
-          }
-          
-          const conv = conversations.find(c => c.id === conversationId);
-          if (conv) {
-              const recipientId = conv.userId;
-              if (recipientId && recipientId !== currentUser.id) {
-                  await apiRequest('POST', 'notifications', {
-                      recipientId,
-                      senderId: currentUser.id,
-                      type: 'message',
-                      relatedPostId: '',
-                      content: `${currentUser.name} sent you a message`,
-                      isRead: false,
-                      timestamp: new Date().toISOString()
-                  });
-              }
-          }
-          
-      } catch (error) {
-          showToast('Failed to send message.', 'error');
-          console.error(error);
+        }
+        return conv;
+      }));
+
+      if (selectedConversation?.id === conversationId) {
+        setSelectedConversation(prev => ({
+          ...prev,
+          messages: [...(prev.messages || []), messageWithId]
+        }));
       }
+
+      const conv = conversations.find(c => c.id === conversationId);
+      if (conv) {
+        const recipientId = conv.userId;
+        if (recipientId && recipientId !== currentUser.id) {
+          await apiRequest('POST', 'notifications', {
+            recipientId,
+            senderId: currentUser.id,
+            type: 'message',
+            relatedPostId: '',
+            content: `${currentUser.name} sent you a message`,
+            isRead: false,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+    } catch (error) {
+      showToast('Failed to send message.', 'error');
+    }
   }, [currentUser, conversations, selectedConversation, showToast]);
 
   const startConversation = useCallback(async (user) => {
-      if (!currentUser) return;
-      
-      try {
-          const existing = conversations.find(conv => 
-              conv.userId === user.id || 
-              (conv.participantIds && conv.participantIds.includes(user.id))
-          );
-          
-          if (existing) {
-              setSelectedConversation(existing);
-              setShowMessagesPage(true);
-              setShowUserSearch(false);
-              return;
-          }
-          
-          const newConv = {
-              participantIds: `${currentUser.id},${user.id}`,
-              lastMessageTimestamp: new Date().toISOString()
-          };
-          
-          const result = await apiRequest('POST', 'conversations', newConv);
-          const convWithId = {
-              ...newConv,
-              id: result.id || result.data?.id,
-              user: user,
-              userId: user.id,
-              messages: [],
-              lastMessage: '',
-              timestamp: newConv.lastMessageTimestamp,
-              unread: 0
-          };
-          
-          setConversations(prev => [convWithId, ...prev]);
-          setSelectedConversation(convWithId);
-          setShowMessagesPage(true);
-          setShowUserSearch(false);
-          
-      } catch (error) {
-          showToast('Failed to start conversation.', 'error');
-          console.error(error);
+    if (!currentUser) return;
+
+    try {
+      const existing = conversations.find(conv =>
+        conv.userId === user.id ||
+        (conv.participantIds && conv.participantIds.includes(user.id))
+      );
+
+      if (existing) {
+        setSelectedConversation(existing);
+        setShowMessagesPage(true);
+        setShowUserSearch(false);
+        return;
       }
+
+      const newConv = {
+        participantIds: `${currentUser.id},${user.id}`,
+        lastMessageTimestamp: new Date().toISOString()
+      };
+
+      const result = await apiRequest('POST', 'conversations', newConv);
+      const convWithId = {
+        ...newConv,
+        id: result.id || result.data?.id,
+        user: user,
+        userId: user.id,
+        messages: [],
+        lastMessage: '',
+        timestamp: newConv.lastMessageTimestamp,
+        unread: 0
+      };
+
+      setConversations(prev => [convWithId, ...prev]);
+      setSelectedConversation(convWithId);
+      setShowMessagesPage(true);
+      setShowUserSearch(false);
+
+    } catch (error) {
+      showToast('Failed to start conversation.', 'error');
+    }
   }, [currentUser, conversations, showToast]);
 
   const handleDeleteConversation = useCallback((convId) => {
-      setConversationToDelete(convId);
-      setShowDeleteConversation(true);
+    setConversationToDelete(convId);
+    setShowDeleteConversation(true);
   }, []);
 
   const confirmDeleteConversation = useCallback(async () => {
-      setIsSaving(true);
-      try {
-          await apiRequest('DELETE', 'conversations', null, conversationToDelete);
-          setConversations(conversations.filter(c => c.id !== conversationToDelete));
-          if (selectedConversation?.id === conversationToDelete) {
-              setSelectedConversation(null);
-          }
-          showToast('Conversation deleted', 'success');
-      } catch(error) {
-          showToast('Failed to delete conversation.', 'error');
-      } finally {
-          setIsSaving(false);
-          setShowDeleteConversation(false);
-          setConversationToDelete(null);
+    setIsSaving(true);
+    try {
+      await apiRequest('DELETE', 'conversations', null, conversationToDelete);
+      setConversations(conversations.filter(c => c.id !== conversationToDelete));
+      if (selectedConversation?.id === conversationToDelete) {
+        setSelectedConversation(null);
       }
+      showToast('Conversation deleted', 'success');
+    } catch (error) {
+      showToast('Failed to delete conversation.', 'error');
+    } finally {
+      setIsSaving(false);
+      setShowDeleteConversation(false);
+      setConversationToDelete(null);
+    }
   }, [conversationToDelete, conversations, selectedConversation, showToast]);
 
   const filteredAndSortedPosts = useMemo(() => {
@@ -1055,7 +1054,7 @@ const EdgeApp = () => {
   const unreadCount = useMemo(() => {
     return notifications.filter(n => !n.isRead && n.recipientId === currentUser?.id).length;
   }, [notifications, currentUser?.id]);
-  
+
   const PostCard = React.memo(({ post, isAuthenticated, onGuestAction, onLike, onNextImage, onPrevImage, onToggleComments, onCommentSubmit, onEdit, onDelete, highlighted }) => {
     const currentIndex = currentImageIndex[post.id] || 0;
     const isCommentsExpanded = expandedComments === post.id;
@@ -1065,23 +1064,23 @@ const EdgeApp = () => {
     const cardRef = useRef(null);
 
     useEffect(() => {
-        if (highlighted && cardRef.current) {
-            cardRef.current.classList.add('highlight');
-            setTimeout(() => {
-                cardRef.current?.classList.remove('highlight');
-            }, 2000);
-        }
+      if (highlighted && cardRef.current) {
+        cardRef.current.classList.add('highlight');
+        setTimeout(() => {
+          cardRef.current?.classList.remove('highlight');
+        }, 2000);
+      }
     }, [highlighted]);
 
     const handleCommentChange = (e) => {
       const value = e.target.value;
       setCommentText(value);
-      
+
       const lastWord = value.split(' ').pop();
       if (lastWord.startsWith('@') && lastWord.length > 1) {
         const query = lastWord.slice(1).toLowerCase();
-        const suggestions = allUsers.filter(user => 
-          user.username.toLowerCase().includes(query) || 
+        const suggestions = allUsers.filter(user =>
+          user.username.toLowerCase().includes(query) ||
           user.name.toLowerCase().includes(query)
         ).slice(0, 5);
         setCommentMentionSuggestions(suggestions);
@@ -1098,199 +1097,199 @@ const EdgeApp = () => {
     };
 
     const handleComment = () => {
-        onCommentSubmit(post.id, commentText);
-        setCommentText('');
-        setCommentMentionSuggestions([]);
+      onCommentSubmit(post.id, commentText);
+      setCommentText('');
+      setCommentMentionSuggestions([]);
     }
 
     const isOwnPost = isAuthenticated && currentUser?.username === post.user?.username;
 
     return (
-        <div id={`post-${post.id}`} ref={cardRef} className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 ease-out group relative overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1">
-            <div className="p-6">
-                <div className="flex items-start gap-4 mb-4">
-                    <button 
-                      onClick={() => {
-                        const user = allUsers.find(u => u.username === post.user?.username);
-                        if (user) {
-                          if (isAuthenticated && user.username === currentUser?.username) {
-                            setShowProfilePage(true);
-                          } else {
-                            setViewingUser(user);
-                          }
+      <div id={`post-${post.id}`} ref={cardRef} className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 ease-out group relative overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1">
+        <div className="p-6">
+          <div className="flex items-start gap-4 mb-4">
+            <button
+              onClick={() => {
+                const user = allUsers.find(u => u.username === post.user?.username);
+                if (user) {
+                  if (isAuthenticated && user.username === currentUser?.username) {
+                    setShowProfilePage(true);
+                  } else {
+                    setViewingUser(user);
+                  }
+                }
+              }}
+              className="text-4xl hover:scale-110 active:scale-95 transition-transform animate-bounce-in"
+            >
+              {post.user?.profileImageURL ?
+                <img src={post.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                post.user?.avatar
+              }
+            </button>
+            <div className="flex-1 min-w-0">
+              <button
+                onClick={() => {
+                  const user = allUsers.find(u => u.username === post.user?.username);
+                  if (user) {
+                    if (isAuthenticated && user.username === currentUser?.username) {
+                      setShowProfilePage(true);
+                    } else {
+                      setViewingUser(user);
+                    }
+                  }
+                }}
+                className="flex items-center gap-2 flex-wrap mb-1 text-left hover:opacity-80 transition-opacity"
+              >
+                <span className="font-bold text-slate-900 dark:text-white text-base truncate">{post.user?.name}</span>
+                {post.user?.verified && <CheckCircle size={18} className="text-blue-500 fill-current flex-shrink-0 animate-scale-in" />}
+                <span className="text-slate-500 dark:text-slate-400 text-sm">· {formatTimestamp(post.timestamp)}</span>
+              </button>
+              <div className="flex items-center flex-wrap gap-2 mt-2">
+                {post.user?.badges && post.user.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
+              </div>
+            </div>
+            {isOwnPost && (
+              <div className="relative">
+                <button type="button" onClick={() => setShowActions(!showActions)} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95">
+                  <MoreVertical size={20} />
+                </button>
+                {showActions && (
+                  <div className="absolute right-0 top-12 w-48 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl z-20 overflow-hidden animate-slide-down">
+                    <button onClick={() => { onEdit(post); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-95 transition-all"><Edit2 size={18}/> Edit Post</button>
+                    <button onClick={() => { onDelete(post.id); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all border-t border-slate-100 dark:border-slate-700"><Trash2 size={18}/> Delete Post</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <p className="text-slate-700 dark:text-slate-300 text-base leading-relaxed mb-4 whitespace-pre-wrap break-words animate-slide-in-up">
+            {post.content && post.content.split(' ').map((word, i) => {
+              if (word.startsWith('@')) {
+                return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">{word} </span>;
+              }
+              return word + ' ';
+            })}
+          </p>
+
+          {Array.isArray(post.images) && post.images.length > 0 && (
+            <div className="relative mb-4 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-700 group/image animate-scale-in">
+              <div className="aspect-video flex items-center justify-center">
+                <img src={post.images[currentIndex]} alt="" className="w-full h-full object-cover" />
+              </div>
+              {post.images.length > 1 && (
+                <>
+                  <button onClick={() => onPrevImage(post.id)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
+                    <ChevronLeft size={24} />
+                  </button>
+                  <button onClick={() => onNextImage(post.id)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
+                    <ChevronRight size={24} />
+                  </button>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+                    {post.images.map((_, idx) => (
+                      <div key={idx} className={`w-2 h-2 rounded-full transition-all ${idx === currentIndex ? 'bg-white w-6' : 'bg-white/50'}`} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-1">
+              <button onClick={() => isAuthenticated ? onLike(post.id) : onGuestAction()} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all active:scale-95 group/like ${post.liked ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
+                <Heart size={20} className={`transition-all ${post.liked ? 'fill-current animate-heart-beat' : 'group-hover/like:scale-110'}`} />
+                <span className="font-bold text-sm">{post.likes || 0}</span>
+              </button>
+              <button onClick={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} className="flex items-center gap-2 px-4 py-2.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
+                <MessageCircle size={20} />
+                <span className="font-bold text-sm">{post.commentsList?.length || 0}</span>
+              </button>
+            </div>
+          </div>
+
+          {isCommentsExpanded && isAuthenticated && (
+            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4 animate-slide-down">
+              <div className="relative">
+                <div className="flex gap-3">
+                  <div className="text-2xl">
+                    {currentUser?.profileImageURL ?
+                      <img src={currentUser.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
+                      currentUser?.avatar
+                    }
+                  </div>
+                  <div className="flex-1 relative">
+                    <textarea
+                      value={commentText}
+                      onChange={handleCommentChange}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
+                          e.preventDefault();
+                          handleComment();
                         }
                       }}
-                      className="text-4xl hover:scale-110 active:scale-95 transition-transform animate-bounce-in"
-                    >
-                      {post.user?.profileImageURL ? 
-                        <img src={post.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
-                        post.user?.avatar
-                      }
-                    </button>
-                    <div className="flex-1 min-w-0">
-                        <button 
-                          onClick={() => {
-                            const user = allUsers.find(u => u.username === post.user?.username);
-                            if (user) {
-                              if (isAuthenticated && user.username === currentUser?.username) {
-                                setShowProfilePage(true);
-                              } else {
-                                setViewingUser(user);
+                      placeholder="Add a comment... (use @ to mention)"
+                      rows={2}
+                      className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-sm"
+                    />
+                    {commentMentionSuggestions.length > 0 && (
+                      <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
+                        {commentMentionSuggestions.map((user, index) => (
+                          <button
+                            key={user.id}
+                            onClick={() => insertCommentMention(user.username)}
+                            className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left"
+                          >
+                            <div className="text-xl">
+                              {user.profileImageURL ?
+                                <img src={user.profileImageURL} alt="Avatar" className="w-6 h-6 rounded-full object-cover" /> :
+                                user.avatar
                               }
-                            }
-                          }}
-                          className="flex items-center gap-2 flex-wrap mb-1 text-left hover:opacity-80 transition-opacity"
-                        >
-                            <span className="font-bold text-slate-900 dark:text-white text-base truncate">{post.user?.name}</span>
-                            {post.user?.verified && <CheckCircle size={18} className="text-blue-500 fill-current flex-shrink-0 animate-scale-in" />}
-                            <span className="text-slate-500 dark:text-slate-400 text-sm">· {formatTimestamp(post.timestamp)}</span>
-                        </button>
-                        <div className="flex items-center flex-wrap gap-2 mt-2">
-                           {post.user?.badges && post.user.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
-                        </div>
-                    </div>
-                    {isOwnPost && (
-                        <div className="relative">
-                            <button type="button" onClick={() => setShowActions(!showActions)} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95">
-                                <MoreVertical size={20} />
-                            </button>
-                             {showActions && (
-                                <div className="absolute right-0 top-12 w-48 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl z-20 overflow-hidden animate-slide-down">
-                                    <button onClick={() => { onEdit(post); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-95 transition-all"><Edit2 size={18}/> Edit Post</button>
-                                    <button onClick={() => { onDelete(post.id); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all border-t border-slate-100 dark:border-slate-700"><Trash2 size={18}/> Delete Post</button>
-                                </div>
-                            )}
-                        </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-slate-900 dark:text-white truncate text-xs">{user.name}</p>
+                              <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     )}
+                  </div>
+                  <button
+                    onClick={handleComment}
+                    disabled={!commentText.trim()}
+                    className="self-end px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Send size={18} />
+                  </button>
                 </div>
+              </div>
 
-                <p className="text-slate-700 dark:text-slate-300 text-base leading-relaxed mb-4 whitespace-pre-wrap break-words animate-slide-in-up">
-                    {post.content && post.content.split(' ').map((word, i) => {
-                        if (word.startsWith('@')) {
-                            return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">{word} </span>;
+              {post.commentsList && post.commentsList.length > 0 && (
+                <div className="space-y-3">
+                  {post.commentsList.map((comment, idx) => (
+                    <div key={idx} className="flex gap-3 animate-slide-in-up" style={{ animationDelay: `${idx * 50}ms` }}>
+                      <div className="text-2xl">
+                        {comment.user?.profileImageURL ?
+                          <img src={comment.user.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
+                          comment.user?.avatar
                         }
-                        return word + ' ';
-                    })}
-                </p>
-
-                {Array.isArray(post.images) && post.images.length > 0 && (
-                    <div className="relative mb-4 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-700 group/image animate-scale-in">
-                        <div className="aspect-video flex items-center justify-center">
-                            <img src={post.images[currentIndex]} alt="" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-bold text-slate-900 dark:text-white text-sm">{comment.user?.name}</span>
                         </div>
-                        {post.images.length > 1 && (
-                            <>
-                                <button onClick={() => onPrevImage(post.id)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
-                                    <ChevronLeft size={24} />
-                                </button>
-                                <button onClick={() => onNextImage(post.id)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
-                                    <ChevronRight size={24} />
-                                </button>
-                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-                                    {post.images.map((_, idx) => (
-                                        <div key={idx} className={`w-2 h-2 rounded-full transition-all ${idx === currentIndex ? 'bg-white w-6' : 'bg-white/50'}`} />
-                                    ))}
-                                </div>
-                            </>
-                        )}
+                        <p className="text-slate-700 dark:text-slate-300 text-sm">{comment.text}</p>
+                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">{formatTimestamp(comment.timestamp)}</p>
+                      </div>
                     </div>
-                )}
-
-                <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <div className="flex items-center gap-1">
-                        <button onClick={() => isAuthenticated ? onLike(post.id) : onGuestAction()} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all active:scale-95 group/like ${post.liked ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                            <Heart size={20} className={`transition-all ${post.liked ? 'fill-current animate-heart-beat' : 'group-hover/like:scale-110'}`} />
-                            <span className="font-bold text-sm">{post.likes || 0}</span>
-                        </button>
-                        <button onClick={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} className="flex items-center gap-2 px-4 py-2.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
-                            <MessageCircle size={20} />
-                            <span className="font-bold text-sm">{post.commentsList?.length || 0}</span>
-                        </button>
-                    </div>
+                  ))}
                 </div>
-
-                {isCommentsExpanded && isAuthenticated && (
-                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4 animate-slide-down">
-                        <div className="relative">
-                            <div className="flex gap-3">
-                                <div className="text-2xl">
-                                  {currentUser?.profileImageURL ? 
-                                    <img src={currentUser.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
-                                    currentUser?.avatar
-                                  }
-                                </div>
-                                <div className="flex-1 relative">
-                                    <textarea
-                                        value={commentText}
-                                        onChange={handleCommentChange}
-                                        onKeyPress={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
-                                                e.preventDefault();
-                                                handleComment();
-                                            }
-                                        }}
-                                        placeholder="Add a comment... (use @ to mention)"
-                                        rows={2}
-                                        className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-sm"
-                                    />
-                                    {commentMentionSuggestions.length > 0 && (
-                                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
-                                            {commentMentionSuggestions.map((user, index) => (
-                                                <button
-                                                    key={user.id}
-                                                    onClick={() => insertCommentMention(user.username)}
-                                                    className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left"
-                                                >
-                                                    <div className="text-xl">
-                                                      {user.profileImageURL ? 
-                                                        <img src={user.profileImageURL} alt="Avatar" className="w-6 h-6 rounded-full object-cover" /> :
-                                                        user.avatar
-                                                      }
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-slate-900 dark:text-white truncate text-xs">{user.name}</p>
-                                                        <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={handleComment}
-                                    disabled={!commentText.trim()}
-                                    className="self-end px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Send size={18} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {post.commentsList && post.commentsList.length > 0 && (
-                            <div className="space-y-3">
-                                {post.commentsList.map((comment, idx) => (
-                                    <div key={idx} className="flex gap-3 animate-slide-in-up" style={{ animationDelay: `${idx * 50}ms` }}>
-                                        <div className="text-2xl">
-                                          {comment.user?.profileImageURL ? 
-                                            <img src={comment.user.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
-                                            comment.user?.avatar
-                                          }
-                                        </div>
-                                        <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-3">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-bold text-slate-900 dark:text-white text-sm">{comment.user?.name}</span>
-                                            </div>
-                                            <p className="text-slate-700 dark:text-slate-300 text-sm">{comment.text}</p>
-                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">{formatTimestamp(comment.timestamp)}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+              )}
             </div>
+          )}
         </div>
+      </div>
     );
   });
 
@@ -1312,10 +1311,10 @@ const EdgeApp = () => {
           </div>
         ) : (
           userNotifications.map((notif, index) => (
-            <button 
-              key={notif.id} 
-              onClick={() => handleNotificationClick(notif)} 
-              className="w-full p-5 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all flex items-start gap-3 animate-slide-in-left" 
+            <button
+              key={notif.id}
+              onClick={() => handleNotificationClick(notif)}
+              className="w-full p-5 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all flex items-start gap-3 animate-slide-in-left"
               style={{ animationDelay: `${index * 50}ms` }}
             >
               <div className="text-3xl">{allUsers.find(u => u.id === notif.senderId)?.avatar || '🔔'}</div>
@@ -1351,25 +1350,25 @@ const EdgeApp = () => {
             <p className="text-slate-600 dark:text-slate-400">Connect with your team</p>
           </div>
           {!isLogin && (
-            <input 
-              type="text" 
-              placeholder="Full Name" 
-              value={formData.name} 
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
               className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
             />
           )}
-          <input 
-            type="text" 
-            placeholder="Username" 
-            value={formData.username} 
+          <input
+            type="text"
+            placeholder="Username"
+            value={formData.username}
             onChange={(e) => setFormData({...formData, username: e.target.value})}
             className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
           />
-          <input 
-            type="password" 
-            placeholder="Password" 
-            value={formData.password} 
+          <input
+            type="password"
+            placeholder="Password"
+            value={formData.password}
             onChange={(e) => setFormData({...formData, password: e.target.value})}
             className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-6 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
           />
@@ -1393,20 +1392,16 @@ const EdgeApp = () => {
     const fileInputRef = useRef(null);
     const isEdit = !!postToEdit;
 
-    const handleImage = (e) => {
+    const handleImage = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        const tempUrl = URL.createObjectURL(file);
-        setCropImage(tempUrl);
-        setCropType('post');
-        setOnCropCompleteCallback(() => async (cropped) => {
-          try {
-            const compressed = await compressImage(cropped);
-            setImages(prev => [...prev, compressed]);
-          } catch (error) {
-            showToast('Failed to process image', 'error');
-          }
-        });
+        try {
+          const blob = await compressToBlob(file);
+          const dataURL = await toBase64(blob);
+          setImages(prev => [...prev, dataURL]);
+        } catch (error) {
+          showToast('Failed to process image', 'error');
+        }
       }
       e.target.value = '';
     };
@@ -1424,7 +1419,7 @@ const EdgeApp = () => {
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-md w-full border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-3 mb-6">
             <div className="text-4xl">
-              {currentUser?.profileImageURL ? 
+              {currentUser?.profileImageURL ?
                 <img src={currentUser.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                 currentUser?.avatar
               }
@@ -1473,10 +1468,11 @@ const EdgeApp = () => {
       const tempUrl = URL.createObjectURL(file);
       setCropImage(tempUrl);
       setCropType(type);
-      setOnCropCompleteCallback(() => async (cropped) => {
+      setOnCropCompleteCallback(() => async (croppedBlob) => {
         try {
-          const compressed = await compressImage(cropped);
-          setProfileForm(prev => ({ ...prev, [type === 'profile' ? 'profileImageURL' : 'coverImageURL']: compressed }));
+          const compressedBlob = await compressToBlob(croppedBlob);
+          const dataURL = await toBase64(compressedBlob);
+          setProfileForm(prev => ({ ...prev, [type === 'profile' ? 'profileImageURL' : 'coverImageURL']: dataURL }));
         } catch (error) {
           showToast('Failed to process image', 'error');
         }
@@ -1484,148 +1480,184 @@ const EdgeApp = () => {
     }
   };
 
-  const ProfilePage = () => {
-    const profileImageRef = useRef(null);
-    const coverImageRef = useRef(null);
+  const SettingsPage = () => {
+    const handleSettingChange = async (key, value) => {
+      const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+
+      if (currentUser && key === 'darkMode') {
+        try {
+          const updatedUser = { ...currentUser, darkMode: value };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('edge-currentUser', JSON.stringify(updatedUser));
+
+          await apiRequest('PUT', 'users', { darkMode: value }, currentUser.id);
+          showToast(`${value ? 'Dark' : 'Light'} mode enabled`);
+        } catch (error) {
+          showToast('Failed to save preference.', 'error');
+          const oldSettings = { ...settings };
+          setSettings(oldSettings);
+          setCurrentUser(prev => ({ ...prev, darkMode: oldSettings.darkMode }));
+          localStorage.setItem('edge-currentUser', JSON.stringify({ ...currentUser, darkMode: oldSettings.darkMode }));
+        }
+      }
+    };
 
     return (
       <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
           <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center gap-4 border-b border-slate-200 dark:border-slate-700">
-            <button onClick={() => setShowProfilePage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
+            <button onClick={() => setShowSettingsPage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
             <div>
-                <h2 className="font-bold text-lg text-slate-900 dark:text-white">Profile</h2>
+              <h2 className="font-bold text-lg text-slate-900 dark:text-white">Settings</h2>
             </div>
           </div>
 
-          <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient group/cover">
-            {profileForm.coverImageURL && (
-              <img src={profileForm.coverImageURL} alt="Cover" className="w-full h-full object-cover" />
-            )}
-            {isEditingProfile && (
-              <button 
-                onClick={() => coverImageRef.current?.click()}
-                className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/cover:opacity-100 transition-all"
-              >
-                <Camera size={32} className="text-white" />
+          <div className="p-6 space-y-8">
+            <div className="animate-slide-in-up">
+              <h3 className="text-base font-bold text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2"><Settings size={18}/> Appearance</h3>
+              <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="p-5 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    {settings.darkMode ? <Moon className="text-indigo-400"/> : <Sun className="text-amber-500" /> }
+                    <span className="font-medium text-slate-800 dark:text-slate-200">Dark Mode</span>
+                  </div>
+                  <button onClick={() => handleSettingChange('darkMode', !settings.darkMode)} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.darkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
+                    <span className="w-6 h-6 bg-white rounded-full shadow transition-transform"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const ProfilePage = () => {
+    const userPosts = useMemo(() => {
+      return currentUser ? posts.filter(p => p.userId === currentUser.id).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)) : [];
+    }, [currentUser, posts]);
+
+    const profileImageInputRef = useRef(null);
+    const coverImageInputRef = useRef(null);
+
+    const cancelEdit = () => {
+      setIsEditingProfile(false);
+      setProfileForm({
+        name: currentUser.name || '',
+        bio: currentUser.bio || '',
+        avatar: currentUser.avatar || '',
+        email: currentUser.email || '',
+        profileImageURL: currentUser.profileImageURL || '',
+        coverImageURL: currentUser.coverImageURL || ''
+      });
+    };
+
+    return (
+      <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
+        <div className="max-w-4xl mx-auto pb-24 md:pb-8">
+          <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setShowProfilePage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
+              <div>
+                <h2 className="font-bold text-lg text-slate-900 dark:text-white">{currentUser.name}</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{userPosts.length} posts</p>
+              </div>
+            </div>
+            {isEditingProfile ? (
+              <div className="flex gap-2">
+                <button onClick={cancelEdit} className="px-5 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all">Cancel</button>
+                <button onClick={handleSaveProfile} disabled={isSaving} className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50">
+                  {isSaving ? <LoadingSpinner/> : 'Save'}
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setIsEditingProfile(true)} className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all flex items-center gap-2">
+                <Edit2 size={18}/>
+                <span>Edit Profile</span>
               </button>
             )}
-            <input type="file" ref={coverImageRef} onChange={(e) => handleProfileImageUpload(e, 'cover')} accept="image/*" hidden />
-            <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in overflow-hidden group/avatar">
-                {profileForm.profileImageURL ? (
-                  <img src={profileForm.profileImageURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
-                ) : (
-                  profileForm.avatar
-                )}
-                {isEditingProfile && (
-                  <button 
-                    onClick={() => profileImageRef.current?.click()}
-                    className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-all"
-                  >
-                    <Camera size={28} className="text-white" />
+          </div>
+
+          <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient">
+            {isEditingProfile ? (
+              <>
+                <input type="file" ref={coverImageInputRef} onChange={(e) => handleProfileImageUpload(e, 'cover')} accept="image/*" hidden />
+                <button onClick={() => coverImageInputRef.current?.click()} className="w-full h-full group">
+                  {profileForm.coverImageURL ? (
+                    <img src={profileForm.coverImageURL} alt="Cover" className="w-full h-full object-cover" />
+                  ) : <div className="w-full h-full bg-slate-300 dark:bg-slate-700"></div> }
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera size={48} className="text-white"/>
+                  </div>
+                </button>
+              </>
+            ) : (
+              currentUser.coverImageURL && (
+                <img src={currentUser.coverImageURL} alt="Cover" className="w-full h-full object-cover" />
+              )
+            )}
+            <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in overflow-hidden">
+              {isEditingProfile ? (
+                <>
+                  <input type="file" ref={profileImageInputRef} onChange={(e) => handleProfileImageUpload(e, 'profile')} accept="image/*" hidden />
+                  <button onClick={() => profileImageInputRef.current?.click()} className="w-full h-full group">
+                    {profileForm.profileImageURL ? (
+                      <img src={profileForm.profileImageURL} alt="Profile" className="w-full h-full object-cover" />
+                    ) : <span className="text-6xl">{profileForm.avatar}</span>}
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera size={32} className="text-white"/>
+                    </div>
                   </button>
-                )}
+                </>
+              ) : (
+                currentUser.profileImageURL ? (
+                  <img src={currentUser.profileImageURL} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  currentUser.avatar
+                )
+              )}
             </div>
-            <input type="file" ref={profileImageRef} onChange={(e) => handleProfileImageUpload(e, 'profile')} accept="image/*" hidden />
           </div>
 
           <div className="pt-20 px-6 pb-6">
-              <div className="flex justify-end mb-4">
-                  {isEditingProfile ? (
-                      <div className="flex gap-2 animate-slide-in-right">
-                          <button onClick={() => { setIsEditingProfile(false); setProfileForm({ name: currentUser.name, bio: currentUser.bio, avatar: currentUser.avatar, email: currentUser.email || '', profileImageURL: currentUser.profileImageURL || '', coverImageURL: currentUser.coverImageURL || '' }); }} disabled={isSaving} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50">Cancel</button>
-                          <button onClick={handleSaveProfile} disabled={isSaving} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
-                            {isSaving ? <LoadingSpinner /> : 'Save'}
-                          </button>
-                      </div>
-                  ) : (
-                      <button onClick={() => setIsEditingProfile(true)} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white border-2 border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all animate-slide-in-left">Edit profile</button>
-                  )}
-              </div>
-              
+            <div className="animate-slide-in-up">
               {isEditingProfile ? (
-                  <div className="space-y-4 animate-fade-in">
-                      <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} placeholder="Name" className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
-                      <p className="text-slate-500 dark:text-slate-400 text-lg px-4">{currentUser?.username}</p>
-                      <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} placeholder="Bio" className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none resize-none" rows={3}/>
-                      <input type="email" placeholder="Email (optional)" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
-                  </div>
+                <div className="space-y-4">
+                  <input type="text" placeholder="Name" value={profileForm.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} className="w-full text-3xl font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl p-2 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500"/>
+                  <input type="text" placeholder="Email" value={profileForm.email} onChange={(e) => setProfileForm({...profileForm, email: e.target.value})} className="w-full text-base bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl p-2 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500"/>
+                  <textarea placeholder="Bio" value={profileForm.bio} onChange={(e) => setProfileForm({...profileForm, bio: e.target.value})} rows={3} className="w-full text-base bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl p-2 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500"/>
+                </div>
               ) : (
-                  <div className="animate-slide-in-up">
-                      <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{currentUser?.name}</h2>
-                      <p className="text-slate-500 dark:text-slate-400 text-lg mt-1">{currentUser?.username}</p>
-                      {currentUser?.email && <p className="text-slate-500 dark:text-slate-400 text-base mt-1">{currentUser.email}</p>}
-                      <p className="text-slate-700 dark:text-slate-300 text-base mt-3 leading-relaxed">{currentUser?.bio}</p>
-                      <div className="flex flex-wrap gap-2 mt-4">
-                          {currentUser?.badges && currentUser.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
-                      </div>
+                <>
+                  <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{currentUser.name}</h2>
+                  <p className="text-slate-500 dark:text-slate-400 text-lg mt-1">{currentUser.username}</p>
+                  {currentUser.email && <p className="text-slate-500 dark:text-slate-400 text-base mt-1">{currentUser.email}</p>}
+                  <p className="text-slate-700 dark:text-slate-300 text-base mt-3 leading-relaxed">{currentUser.bio}</p>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {currentUser.badges && currentUser.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
                   </div>
+                </>
               )}
+            </div>
           </div>
 
           <div className="p-4 space-y-4">
+             <h3 className="text-lg font-bold text-slate-900 dark:text-white px-2">Your Posts</h3>
             {userPosts.map((post, index) => (
               <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
                 <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
               </div>
             ))}
+            {userPosts.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-slate-500 dark:text-slate-400">You haven't posted anything yet</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
-    )
-  };
-
-  const SettingsPage = () => {
-    const handleSettingChange = async (key, value) => {
-        const newSettings = { ...settings, [key]: value };
-        setSettings(newSettings);
-
-        if (currentUser && key === 'darkMode') {
-            try {
-                const updatedUser = { ...currentUser, darkMode: value };
-                setCurrentUser(updatedUser);
-                localStorage.setItem('edge-currentUser', JSON.stringify(updatedUser));
-                
-                await apiRequest('PUT', 'users', { darkMode: value }, currentUser.id);
-                showToast(`${value ? 'Dark' : 'Light'} mode enabled`);
-            } catch (error) {
-                showToast('Failed to save preference.', 'error');
-                const oldSettings = { ...settings };
-                setSettings(oldSettings);
-                setCurrentUser(prev => ({ ...prev, darkMode: oldSettings.darkMode }));
-                localStorage.setItem('edge-currentUser', JSON.stringify({ ...currentUser, darkMode: oldSettings.darkMode }));
-            }
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
-            <div className="max-w-4xl mx-auto pb-24 md:pb-8">
-                 <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center gap-4 border-b border-slate-200 dark:border-slate-700">
-                    <button onClick={() => setShowSettingsPage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
-                    <div>
-                        <h2 className="font-bold text-lg text-slate-900 dark:text-white">Settings</h2>
-                    </div>
-                </div>
-
-                <div className="p-6 space-y-8">
-                    <div className="animate-slide-in-up">
-                        <h3 className="text-base font-bold text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2"><Settings size={18}/> Appearance</h3>
-                        <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-                             <div className="p-5 flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                    {settings.darkMode ? <Moon className="text-indigo-400"/> : <Sun className="text-amber-500" /> }
-                                    <span className="font-medium text-slate-800 dark:text-slate-200">Dark Mode</span>
-                                </div>
-                                <button onClick={() => handleSettingChange('darkMode', !settings.darkMode)} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.darkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
-                                    <span className="w-6 h-6 bg-white rounded-full shadow transition-transform"></span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     );
   };
 
@@ -1639,8 +1671,8 @@ const EdgeApp = () => {
         </div>
 
         {leaderboardData.slice(0, 10).map((user, index) => (
-          <div 
-            key={user.id} 
+          <div
+            key={user.id}
             className={`bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 animate-slide-in-up hover:shadow-xl transition-all ${
               index === 0 ? 'border-amber-400 dark:border-amber-500 bg-gradient-to-br from-amber-50/50 to-yellow-50/50 dark:from-amber-900/10 dark:to-yellow-900/10' :
               index === 1 ? 'border-slate-400 dark:border-slate-500' :
@@ -1651,7 +1683,7 @@ const EdgeApp = () => {
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="text-5xl">
-                  {user.profileImageURL ? 
+                  {user.profileImageURL ?
                     <img src={user.profileImageURL} alt="Avatar" className="w-14 h-14 rounded-full object-cover" /> :
                     user.avatar
                   }
@@ -1700,7 +1732,7 @@ const EdgeApp = () => {
 
   const UserSearchModal = () => {
     const [searchQuery, setSearchQuery] = useState('');
-    const filteredUsers = allUsers.filter(user => 
+    const filteredUsers = allUsers.filter(user =>
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.username.toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -1727,8 +1759,8 @@ const EdgeApp = () => {
           </div>
           <div className="overflow-y-auto flex-1">
             {filteredUsers.map((user, index) => (
-              <div 
-                key={user.id} 
+              <div
+                key={user.id}
                 className="p-5 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all animate-slide-in-up"
                 style={{ animationDelay: `${index * 50}ms` }}
                 onClick={() => {
@@ -1738,7 +1770,7 @@ const EdgeApp = () => {
               >
                 <div className="flex items-center gap-4">
                   <div className="text-4xl">
-                    {user.profileImageURL ? 
+                    {user.profileImageURL ?
                       <img src={user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                       user.avatar
                     }
@@ -1753,7 +1785,7 @@ const EdgeApp = () => {
                       {user.badges && user.badges.split(',').slice(0, 2).map(badge => <Badge key={badge} name={badge.trim()} />)}
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
                       startConversation(user);
@@ -1785,7 +1817,7 @@ const EdgeApp = () => {
                 <p className="text-sm text-slate-500 dark:text-slate-400">{userPosts.length} posts</p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => startConversation(user)}
               className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center gap-2"
             >
@@ -1811,10 +1843,10 @@ const EdgeApp = () => {
             <div className="animate-slide-in-up">
               <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{user.name}</h2>
               <p className="text-slate-500 dark:text-slate-400 text-lg mt-1">{user.username}</p>
-               {user.email && <p className="text-slate-500 dark:text-slate-400 text-base mt-1">{user.email}</p>}
+              {user.email && <p className="text-slate-500 dark:text-slate-400 text-base mt-1">{user.email}</p>}
               <p className="text-slate-700 dark:text-slate-300 text-base mt-3 leading-relaxed">{user.bio}</p>
               <div className="flex flex-wrap gap-2 mt-4">
-                 {user.badges && user.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
+                {user.badges && user.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
               </div>
             </div>
           </div>
@@ -1840,20 +1872,16 @@ const EdgeApp = () => {
     const [messageText, setMessageText] = useState('');
     const fileInputRef = useRef(null);
 
-    const handleImageUpload = (e) => {
+    const handleImageUpload = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        const tempUrl = URL.createObjectURL(file);
-        setCropImage(tempUrl);
-        setCropType('post');  // Free form for messages too
-        setOnCropCompleteCallback(() => async (cropped) => {
-          try {
-            const compressed = await compressImage(cropped);
-            handleSendMessage(selectedConversation.id, { type: 'image', image: compressed });
-          } catch (error) {
-            showToast('Failed to process image', 'error');
-          }
-        });
+        try {
+          const blob = await compressToBlob(file);
+          const dataURL = await toBase64(blob);
+          handleSendMessage(selectedConversation.id, { type: 'image', image: dataURL });
+        } catch (error) {
+          showToast('Failed to process image', 'error');
+        }
       }
       if (e.target) e.target.value = '';
     };
@@ -1866,7 +1894,7 @@ const EdgeApp = () => {
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Messages</h2>
               <button onClick={() => setShowMessagesPage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
             </div>
-            <button 
+            <button
               onClick={() => setShowUserSearch(true)}
               className="w-full px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
             >
@@ -1891,12 +1919,12 @@ const EdgeApp = () => {
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="flex items-center gap-4">
-                    <button 
+                    <button
                       onClick={() => setSelectedConversation(conv)}
                       className="flex items-center gap-4 flex-1 min-w-0"
                     >
                       <div className="text-4xl">
-                        {conv.user.profileImageURL ? 
+                        {conv.user.profileImageURL ?
                           <img src={conv.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                           conv.user.avatar
                         }
@@ -1930,13 +1958,13 @@ const EdgeApp = () => {
         {selectedConversation && (
           <div className="flex-1 flex flex-col bg-white dark:bg-slate-800">
             <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800/50 flex items-center gap-4">
-              <button 
-                onClick={() => setSelectedConversation(null)} 
+              <button
+                onClick={() => setSelectedConversation(null)}
                 className="md:hidden text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full active:scale-95 transition-all"
               >
                 <ChevronLeft size={22}/>
               </button>
-              <div 
+              <div
                 className="flex items-center gap-3 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => {
                   const user = allUsers.find(u => u.id === selectedConversation.userId);
@@ -1948,7 +1976,7 @@ const EdgeApp = () => {
                 }}
               >
                 <div className="text-4xl">
-                  {selectedConversation.user.profileImageURL ? 
+                  {selectedConversation.user.profileImageURL ?
                     <img src={selectedConversation.user.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                     selectedConversation.user.avatar
                   }
@@ -1972,14 +2000,14 @@ const EdgeApp = () => {
                 selectedConversation.messages.map((msg, index) => {
                   const isOwnMessage = msg.senderId === currentUser?.id;
                   return (
-                    <div 
-                      key={msg.id} 
+                    <div
+                      key={msg.id}
                       className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} animate-slide-in-up`}
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
                       <div className={`max-w-xs lg:max-w-md ${
-                        isOwnMessage 
-                          ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white' 
+                        isOwnMessage
+                          ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white'
                           : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700'
                       } rounded-3xl px-5 py-3 shadow-sm`}>
                         {msg.type === 'image' && msg.imageUrl ? (
@@ -2048,7 +2076,7 @@ const EdgeApp = () => {
 
   const GroupChatPage = () => {
     const [localGroupChatMessage, setLocalGroupChatMessage] = useState('');
-    
+
     useEffect(() => {
       if (groupChatScrollRef.current) {
         groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
@@ -2057,25 +2085,25 @@ const EdgeApp = () => {
 
     const handleSendGroupMessage = async () => {
       if (!localGroupChatMessage.trim() || !currentUser) return;
-      
+
       try {
         const newMessage = {
           senderId: currentUser.id,
           text: localGroupChatMessage,
           timestamp: new Date().toISOString()
         };
-        
+
         const result = await apiRequest('POST', 'groupchat', newMessage);
-        
+
         const messageWithId = {
           ...newMessage,
           id: result.id || result.data?.id,
           user: currentUser
         };
-        
+
         setGroupMessages(prev => [...prev, messageWithId]);
         setLocalGroupChatMessage('');
-        
+
         setTimeout(() => {
           if (groupChatScrollRef.current) {
             groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
@@ -2083,7 +2111,6 @@ const EdgeApp = () => {
         }, 100);
       } catch (error) {
         showToast('Failed to send group message.', 'error');
-        console.error(error);
       }
     };
 
@@ -2111,22 +2138,22 @@ const EdgeApp = () => {
             groupMessages.map((msg, index) => {
               const isOwnMessage = msg.senderId === currentUser?.id;
               return (
-                <div 
-                  key={msg.id || index} 
+                <div
+                  key={msg.id || index}
                   className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} animate-slide-in-up`}
                   style={{ animationDelay: `${index * 30}ms` }}
                 >
                   {!isOwnMessage && (
                     <div className="text-3xl mr-3">
-                      {msg.user?.profileImageURL ? 
+                      {msg.user?.profileImageURL ?
                         <img src={msg.user.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
                         msg.user?.avatar
                       }
                     </div>
                   )}
                   <div className={`max-w-xs lg:max-w-md ${
-                    isOwnMessage 
-                      ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white' 
+                    isOwnMessage
+                      ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white'
                       : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700'
                   } rounded-3xl px-5 py-3 shadow-sm`}>
                     {!isOwnMessage && (
@@ -2172,41 +2199,6 @@ const EdgeApp = () => {
 
   return (
     <div className="h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden flex flex-col">
-      <style>{`
-        @keyframes shimmer { to { transform: translateX(100%); } }
-        @keyframes gradient { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-        @keyframes heart-beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slide-in-left { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes slide-in-right { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes slide-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slide-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slide-up-bounce { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes bounce-in { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
-        @keyframes scale-in { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-        
-        .animate-shimmer { animation: shimmer 2s infinite; }
-        .animate-gradient { background-size: 200% 200%; animation: gradient 15s ease infinite; }
-        .animate-heart-beat { animation: heart-beat 0.3s ease; }
-        .animate-fade-in { animation: fade-in 0.3s ease; }
-        .animate-slide-in-left { animation: slide-in-left 0.4s ease; }
-        .animate-slide-in-right { animation: slide-in-right 0.4s ease; }
-        .animate-slide-in-up { animation: slide-in-up 0.4s ease; }
-        .animate-slide-down { animation: slide-down 0.3s ease; }
-        .animate-slide-up-bounce { animation: slide-up-bounce 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
-        .animate-bounce-in { animation: bounce-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
-        .animate-scale-in { animation: scale-in 0.3s ease; }
-        
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        .highlight { animation: highlight-pulse 2s ease; }
-        @keyframes highlight-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
-          50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.4); }
-        }
-      `}</style>
-
       <header className={`bg-white dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 backdrop-blur-xl transition-transform duration-300 z-40 ${headerVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -2228,8 +2220,8 @@ const EdgeApp = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button 
-              onClick={() => isAuthenticated ? setShowMessagesPage(true) : handleGuestAction()} 
+            <button
+              onClick={() => isAuthenticated ? setShowMessagesPage(true) : handleGuestAction()}
               className="relative p-3 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all active:scale-95"
             >
               <MessageCircle size={22} />
@@ -2238,8 +2230,8 @@ const EdgeApp = () => {
               )}
             </button>
             <div className="relative">
-              <button 
-                onClick={() => isAuthenticated ? setShowNotifications(!showNotifications) : handleGuestAction()} 
+              <button
+                onClick={() => isAuthenticated ? setShowNotifications(!showNotifications) : handleGuestAction()}
                 className="relative p-3 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all active:scale-95"
               >
                 <Bell size={22} />
@@ -2252,14 +2244,14 @@ const EdgeApp = () => {
               {isAuthenticated && showNotifications && <NotificationDropdown />}
             </div>
             <div className="relative">
-              <button 
-                onClick={() => isAuthenticated ? setShowProfileMenu(!showProfileMenu) : handleGuestAction()} 
+              <button
+                onClick={() => isAuthenticated ? setShowProfileMenu(!showProfileMenu) : handleGuestAction()}
                 className="text-3xl hover:scale-110 active:scale-95 transition-transform"
               >
                 {isAuthenticated && currentUser ? (
-                    currentUser.profileImageURL ? 
-                    <img src={currentUser.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
-                    currentUser.avatar
+                  currentUser.profileImageURL ?
+                  <img src={currentUser.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
+                  currentUser.avatar
                 ) : <User className="w-10 h-10 rounded-full p-2 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"/> 
                 }
               </button>
@@ -2268,7 +2260,7 @@ const EdgeApp = () => {
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800/50">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="text-4xl">
-                        {currentUser?.profileImageURL ? 
+                        {currentUser?.profileImageURL ?
                           <img src={currentUser.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
                           currentUser?.avatar
                         }
@@ -2297,8 +2289,8 @@ const EdgeApp = () => {
           </div>
         </div>
       </header>
-      
-      <div 
+
+      <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto no-scrollbar"
         onTouchStart={handleTouchStart}
@@ -2317,14 +2309,14 @@ const EdgeApp = () => {
                 <div className="space-y-4">
                   {filteredAndSortedPosts.map((post, index) => (
                     <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                      <PostCard 
-                        post={post} 
+                      <PostCard
+                        post={post}
                         isAuthenticated={isAuthenticated}
                         onGuestAction={handleGuestAction}
-                        onLike={handleLike} 
-                        onNextImage={nextImage} 
-                        onPrevImage={prevImage} 
-                        onToggleComments={toggleComments} 
+                        onLike={handleLike}
+                        onNextImage={nextImage}
+                        onPrevImage={prevImage}
+                        onToggleComments={toggleComments}
                         onCommentSubmit={handleCommentSubmit}
                         onEdit={handleEditPost}
                         onDelete={handleDeletePost}
@@ -2347,7 +2339,7 @@ const EdgeApp = () => {
                   <div className="text-7xl mb-4">💬</div>
                   <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Team Chat</h3>
                   <p className="text-slate-600 dark:text-slate-400 mb-6">Connect with your warehouse team</p>
-                  <button 
+                  <button
                     onClick={() => isAuthenticated ? setShowGroupChat(true) : handleGuestAction()}
                     className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-105 active:scale-95 transition-all"
                   >
@@ -2395,7 +2387,7 @@ const EdgeApp = () => {
       {showUserSearch && isAuthenticated && <UserSearchModal />}
       {viewingUser && <UserProfileView user={viewingUser} />}
       {cropImage && <CropModal imageSrc={cropImage} cropType={cropType} onCropComplete={onCropCompleteCallback} onClose={() => setCropImage(null)} />}
-      
+
       {toast && (
         <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[70] animate-slide-in-up ${
           toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700'
