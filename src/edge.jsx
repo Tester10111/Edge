@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Heart, MessageCircle, Plus, Search, Home, User, X, Send, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Users, Trophy, Target, Clock, Flame, Camera, Loader } from 'lucide-react';
+import Cropper from 'react-easy-crop';  // Note: Install react-easy-crop via npm/yarn
 
 // --- IMPORTANT: Set your Google Apps Script Web App URL here ---
 const SCRIPT_URL = '/api';
@@ -71,6 +72,55 @@ const formatTimestamp = (isoString) => {
     return '...';
   }
 };
+
+const compressImage = (imageData, maxWidth = 800, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = imageData;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Canvas to Blob conversion failed.'));
+            return;
+          }
+          const compressedReader = new FileReader();
+          compressedReader.readAsDataURL(blob);
+          compressedReader.onloadend = () => {
+            const result = compressedReader.result;
+            // Improved: Recursively reduce quality if base64 is too large (>40,000 chars for safety)
+            if (result.length > 40000 && quality > 0.3) {
+              compressImage(imageData, maxWidth, quality - 0.1).then(resolve).catch(reject);
+            } else {
+              resolve(result);
+            }
+          };
+          compressedReader.onerror = () => {
+            reject(new Error('Failed to read compressed blob.'));
+          };
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = reject;
+  });
+};
+
 
 // --- UI Components ---
 
@@ -148,6 +198,78 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, isLoadi
     );
 };
 
+const CropModal = ({ imageSrc, cropType, onCropComplete, onClose }) => {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+
+  const aspect = cropType === 'profile' ? 1 : cropType === 'cover' ? 16/9 : null;
+  const cropShape = cropType === 'profile' ? 'round' : 'rect';
+
+  const onCrop = useCallback(async () => {
+    try {
+      const croppedImage = await getCroppedImg(imageSrc, croppedAreaPixels);
+      onCropComplete(croppedImage);
+      onClose();
+    } catch (e) {
+      console.error(e);
+    }
+  }, [croppedAreaPixels, imageSrc, onCropComplete, onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70]">
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl w-11/12 max-w-md">
+        <div className="relative w-full h-64">
+          <Cropper
+            image={imageSrc}
+            crop={crop}
+            zoom={zoom}
+            aspect={aspect}
+            cropShape={cropShape}
+            showGrid={false}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropAreaChange={(_, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
+          />
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded">Cancel</button>
+          <button onClick={onCrop} className="px-4 py-2 bg-indigo-600 text-white rounded">Crop</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const getCroppedImg = (imageSrc, pixelCrop) => {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.src = imageSrc;
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = pixelCrop.width;
+      canvas.height = pixelCrop.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        pixelCrop.width,
+        pixelCrop.height
+      );
+      canvas.toBlob((blob) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => resolve(reader.result);
+      }, 'image/jpeg', 0.8);
+    };
+  });
+};
+
 const EdgeApp = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('feed');
@@ -180,6 +302,9 @@ const EdgeApp = () => {
   const [isPosting, setIsPosting] = useState(false);
   const [showDeleteConversation, setShowDeleteConversation] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState(null);
+  const [cropImage, setCropImage] = useState(null);
+  const [cropType, setCropType] = useState(null);
+  const [onCropCompleteCallback, setOnCropCompleteCallback] = useState(null);
   
   const [posts, setPosts] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -231,7 +356,7 @@ const EdgeApp = () => {
             setIsLoading(false);
             return;
         }
-        const [usersData, postsData, interactionsData, commentsData, convosData, messagesData, notificationsData] = await Promise.all([
+        const [usersData, postsData, interactionsData, commentsData, convosData, messagesData, notificationsData, groupChatData] = await Promise.all([
             apiRequest('GET', 'users'),
             apiRequest('GET', 'posts'),
             apiRequest('GET', 'interactions'),
@@ -239,6 +364,7 @@ const EdgeApp = () => {
             apiRequest('GET', 'conversations'),
             apiRequest('GET', 'messages'),
             apiRequest('GET', 'notifications'),
+            apiRequest('GET', 'groupchat'),
         ]);
 
         const enrichedPosts = postsData
@@ -283,6 +409,13 @@ const EdgeApp = () => {
             };
         });
 
+        const enrichedGroupMessages = groupChatData
+          .map(msg => ({
+            ...msg,
+            user: usersData.find(u => u.id === msg.senderId)
+          }))
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
         const leaderboard = usersData.map(user => ({
             ...user,
             linesPickedToday: Math.floor(Math.random() * 500) + 100,
@@ -299,6 +432,7 @@ const EdgeApp = () => {
         setMessages(messagesData);
         setConversations(enrichedConvos);
         setNotifications(notificationsData);
+        setGroupMessages(enrichedGroupMessages);
         setLeaderboardData(leaderboard);
         
     } catch (error) {
@@ -1145,16 +1279,9 @@ const EdgeApp = () => {
                                         <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-3">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="font-bold text-slate-900 dark:text-white text-sm">{comment.user?.name}</span>
-                                                <span className="text-slate-500 dark:text-slate-400 text-xs">· {formatTimestamp(comment.timestamp)}</span>
                                             </div>
-                                            <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                                {comment.text.split(' ').map((word, i) => {
-                                                    if (word.startsWith('@')) {
-                                                        return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold">{word} </span>;
-                                                    }
-                                                    return word + ' ';
-                                                })}
-                                            </p>
+                                            <p className="text-slate-700 dark:text-slate-300 text-sm">{comment.text}</p>
+                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">{formatTimestamp(comment.timestamp)}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -1167,504 +1294,284 @@ const EdgeApp = () => {
     );
   });
 
-const AuthModal = ({ onLogin, onSignup, onClose }) => {
-    const [authMode, setAuthMode] = useState('login');
-    const [authForm, setAuthForm] = useState({ name: '', username: '', password: '', email: '' });
-    const [isLoading, setIsLoading] = useState(false);
-    
-    const handleFormChange = (e) => {
-      const { name, value } = e.target;
-      setAuthForm(prev => ({...prev, [name]: value}));
-    }
-
-    const handleSubmit = async () => {
-      setIsLoading(true);
-      try {
-        if (authMode === 'login') {
-          await onLogin(authForm);
-        } else {
-          await onSignup(authForm);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    }
+  const NotificationDropdown = () => {
+    const userNotifications = notifications
+      .filter(n => n.recipientId === currentUser.id)
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 10);
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end md:items-center justify-center z-[60] p-0 md:p-4 animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl p-8 w-full md:max-w-md border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
-                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-6 md:hidden"></div>
-                <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl mb-4 mx-auto animate-bounce-in">
-                        <Zap size={28} className="text-white" />
-                    </div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 animate-slide-in-left">Welcome to Edge</h2>
-                    <p className="text-slate-600 dark:text-slate-400 text-base animate-slide-in-right">
-                        {authMode === 'login' ? 'Sign in to continue' : 'Create your account'}
-                    </p>
-                </div>
-                <div className="space-y-4">
-                    {authMode === 'signup' && (
-                        <input type="text" name="name" placeholder="Full Name" value={authForm.name} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base animate-slide-in-left" />
-                    )}
-                    <input type="text" name="username" placeholder="Username" value={authForm.username} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base" />
-                    <input type="password" name="password" placeholder="Password" value={authForm.password} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base" />
-                </div>
-                <button type="button" onClick={handleSubmit} disabled={isLoading} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all text-base relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                    {isLoading ? <LoadingSpinner /> : <span className="relative z-10">{authMode === 'login' ? 'Login' : 'Create Account'}</span>}
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                </button>
-                <p className="text-slate-600 dark:text-slate-400 text-base text-center mt-6">
-                    {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
-                    <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold" disabled={isLoading}>
-                        {authMode === 'login' ? 'Sign up' : 'Login'}
-                    </button>
-                </p>
-            </div>
+      <div ref={notificationsRef} className="absolute right-0 top-14 w-80 bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden z-50 animate-slide-down max-h-96 overflow-y-auto">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800/50">
+          <h3 className="font-bold text-lg text-slate-900 dark:text-white">Notifications</h3>
         </div>
+        {userNotifications.length === 0 ? (
+          <div className="p-8 text-center">
+            <Bell size={48} className="mx-auto text-slate-300 dark:text-slate-600 mb-4" />
+            <p className="text-slate-500 dark:text-slate-400 font-medium">No notifications yet</p>
+          </div>
+        ) : (
+          userNotifications.map((notif, index) => (
+            <button 
+              key={notif.id} 
+              onClick={() => handleNotificationClick(notif)} 
+              className="w-full p-5 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all flex items-start gap-3 animate-slide-in-left" 
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <div className="text-3xl">{allUsers.find(u => u.id === notif.senderId)?.avatar || '🔔'}</div>
+              <div className="flex-1 text-left">
+                <p className="text-slate-900 dark:text-white">{notif.content}</p>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{formatTimestamp(notif.timestamp)}</p>
+              </div>
+              {!notif.isRead && <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2"></div>}
+            </button>
+          ))
+        )}
+      </div>
     );
   };
-  
-  const CreateModal = ({ onPost, postToEdit, onClose }) => {
-    const [formData, setFormData] = useState({
-        id: postToEdit?.id || null,
-        content: postToEdit?.content || '',
-        images: postToEdit?.images || []
-    });
-    const [localMentionSuggestions, setLocalMentionSuggestions] = useState([]);
-    const fileInputRef = useRef(null);
 
-    const compressImage = (imageData, maxWidth = 800, quality = 0.8) => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = imageData;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
+  const AuthModal = ({ onLogin, onSignup, onClose }) => {
+    const [isLogin, setIsLogin] = useState(true);
+    const [formData, setFormData] = useState({ name: '', username: '', password: '' });
 
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              const compressedReader = new FileReader();
-              compressedReader.readAsDataURL(blob);
-              compressedReader.onloadend = () => {
-                const base64String = compressedReader.result;
-                if (base64String.length > 50000) {
-                  // Try with lower quality
-                  canvas.toBlob(
-                    (lowerBlob) => {
-                      const lowerReader = new FileReader();
-                      lowerReader.readAsDataURL(lowerBlob);
-                      lowerReader.onloadend = () => {
-                        const lowerBase64 = lowerReader.result;
-                        if (lowerBase64.length > 50000) {
-                          reject(new Error('Image too large. Please use a smaller image.'));
-                        } else {
-                          resolve(lowerBase64);
-                        }
-                      };
-                    },
-                    'image/jpeg',
-                    0.6
-                  );
-                } else {
-                  resolve(base64String);
-                }
-              };
-            },
-            'image/jpeg',
-            quality
-          );
-        };
-        img.onerror = reject;
-      });
-    };
-
-    const handleFormChange = (e) => {
-      const { name, value } = e.target;
-      setFormData(prev => ({ ...prev, [name]: value }));
-
-      if (name === 'content') {
-        const lastWord = value.split(' ').pop();
-        if (lastWord.startsWith('@') && lastWord.length > 1) {
-          const query = lastWord.slice(1).toLowerCase();
-          const suggestions = allUsers.filter(user =>
-            user.username.toLowerCase().includes(query) ||
-            user.name.toLowerCase().includes(query)
-          ).slice(0, 5);
-          setLocalMentionSuggestions(suggestions);
-        } else {
-          setLocalMentionSuggestions([]);
-        }
+    const handleSubmit = () => {
+      if (isLogin) {
+        onLogin(formData);
+      } else {
+        onSignup(formData);
       }
     };
 
-    const insertMention = (username) => {
-      const words = formData.content.split(' ');
-      words[words.length - 1] = username + ' ';
-      setFormData(prev => ({ ...prev, content: words.join(' ') }));
-      setLocalMentionSuggestions([]);
-    };
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4 animate-fade-in" onClick={onClose}>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
+          <div className="text-center mb-6">
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{isLogin ? 'Welcome Back' : 'Join Edge'}</h2>
+            <p className="text-slate-600 dark:text-slate-400">Connect with your team</p>
+          </div>
+          {!isLogin && (
+            <input 
+              type="text" 
+              placeholder="Full Name" 
+              value={formData.name} 
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
+            />
+          )}
+          <input 
+            type="text" 
+            placeholder="Username" 
+            value={formData.username} 
+            onChange={(e) => setFormData({...formData, username: e.target.value})}
+            className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
+          />
+          <input 
+            type="password" 
+            placeholder="Password" 
+            value={formData.password} 
+            onChange={(e) => setFormData({...formData, password: e.target.value})}
+            className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-6 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
+          />
+          <button onClick={handleSubmit} className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-xl active:scale-95 transition-all">
+            {isLogin ? 'Login' : 'Sign Up'}
+          </button>
+          <p className="text-center mt-4 text-slate-600 dark:text-slate-400">
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            <button onClick={() => setIsLogin(!isLogin)} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
+              {isLogin ? 'Sign Up' : 'Login'}
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  };
 
-    const handleImageUpload = (e) => {
-      const files = Array.from(e.target.files);
-      let processedCount = 0;
+  const CreateModal = ({ onPost, postToEdit, onClose }) => {
+    const [content, setContent] = useState(postToEdit?.content || '');
+    const [images, setImages] = useState(postToEdit?.images || []);
+    const fileInputRef = useRef(null);
+    const isEdit = !!postToEdit;
 
-      files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setCropImageData(event.target.result);
-          setCropAspectRatio(null);
-          setCropCallback(() => async (croppedImage) => {
-            try {
-              const compressed = await compressImage(croppedImage, 800, 0.8);
-              setFormData(prev => ({ ...prev, images: [...(prev.images || []), compressed] }));
-              processedCount++;
-              if (processedCount < files.length) {
-                // Process next image
-                const nextFile = files[processedCount];
-                const nextReader = new FileReader();
-                nextReader.onload = reader.onload;
-                nextReader.readAsDataURL(nextFile);
-              }
-            } catch (error) {
-              showToast(error.message || 'Failed to process image', 'error');
-            }
-          });
-          setShowImageCrop(true);
-        };
-        if (processedCount === 0) {
-          reader.readAsDataURL(file);
-        }
-      });
+    const handleImage = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const tempUrl = URL.createObjectURL(file);
+        setCropImage(tempUrl);
+        setCropType('post');
+        setOnCropCompleteCallback(() => async (cropped) => {
+          try {
+            const compressed = await compressImage(cropped);
+            setImages(prev => [...prev, compressed]);
+          } catch (error) {
+            showToast('Failed to process image', 'error');
+          }
+        });
+      }
       e.target.value = '';
     };
 
-    const removeImage = (index) => {
-      setFormData(prev => ({ ...prev, images: (prev.images || []).filter((_, i) => i !== index) }));
+    const handleSubmit = () => {
+      onPost({
+        id: postToEdit?.id,
+        content,
+        images
+      });
     };
 
-    const handleSubmit = () => {
-        if (!formData.content.trim()) {
-            showToast('Please write something!', 'error');
-            return;
-        }
-        onPost(formData);
-    }
-    
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end md:items-center justify-center z-[60] p-0 md:p-4 animate-fade-in" onClick={onClose}>
-          <div className="bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl p-6 md:p-8 w-full md:max-w-2xl border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-6 md:hidden"></div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">{postToEdit ? 'Edit Post' : 'Create Post'}</h2>
-              <button onClick={onClose} disabled={isPosting} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95"><X size={24} /></button>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4 animate-fade-in" onClick={onClose}>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-md w-full border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="text-4xl">
+              {currentUser?.profileImageURL ? 
+                <img src={currentUser.profileImageURL} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                currentUser?.avatar
+              }
             </div>
-            <div className="space-y-4">
-              <div className="relative">
-                <textarea name="content" placeholder="What's on your mind? Use @ to mention someone..." value={formData.content} onChange={handleFormChange} rows={6} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-base" disabled={isPosting} />
-                {localMentionSuggestions.length > 0 && (
-                  <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
-                    {localMentionSuggestions.map((user, index) => (
-                      <button
-                        key={user.id}
-                        onClick={() => insertMention(user.username)}
-                        className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left animate-slide-in-up"
-                        style={{ animationDelay: `${index * 30}ms` }}
-                      >
-                        <div className="text-2xl">
-                          {user.profileImageURL ? 
-                            <img src={user.profileImageURL} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> :
-                            user.avatar
-                          }
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-900 dark:text-white truncate text-sm">{user.name}</p>
-                          <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl p-8 text-center hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95" onClick={() => !isPosting && fileInputRef.current?.click()}>
-                <ImageIcon size={40} className="mx-auto text-slate-400 dark:text-slate-500 mb-3 animate-bounce-in" />
-                <p className="text-slate-600 dark:text-slate-400 font-medium">Tap to upload images</p>
-                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple hidden disabled={isPosting} />
-              </div>
-              {Array.isArray(formData.images) && formData.images.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {formData.images.map((img, index) => (
-                    <div key={index} className="relative">
-                      <img src={img} alt="" className="w-20 h-20 object-cover rounded-lg" />
-                      <button onClick={() => removeImage(index)} disabled={isPosting} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
+            <div>
+              <p className="font-bold text-slate-900 dark:text-white">{currentUser?.name}</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">{currentUser?.username}</p>
+            </div>
+          </div>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="What's happening in the warehouse?"
+            rows={4}
+            className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none"
+          />
+          {images.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {images.map((img, idx) => (
+                <div key={idx} className="relative">
+                  <img src={img} alt="" className="w-full h-32 object-cover rounded-xl" />
+                  <button onClick={() => setImages(images.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1">
+                    <X size={12} />
+                  </button>
                 </div>
-              )}
+              ))}
             </div>
-            <button onClick={handleSubmit} disabled={isPosting} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed">
-                {isPosting ? <LoadingSpinner /> : (
-                  <>
-                    <span className="relative z-10 flex items-center gap-2"><Send size={20} />{postToEdit ? 'Save Changes' : 'Post'}</span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </>
-                )}
+          )}
+          <div className="flex justify-between items-center">
+            <button onClick={() => fileInputRef.current?.click()} className="p-3 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-full transition-all active:scale-95">
+              <ImageIcon size={24} />
+            </button>
+            <input type="file" ref={fileInputRef} onChange={handleImage} accept="image/*" hidden />
+            <button onClick={handleSubmit} disabled={isPosting || (!content.trim() && images.length === 0)} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
+              {isPosting ? <LoadingSpinner /> : (isEdit ? 'Update' : 'Post')}
             </button>
           </div>
         </div>
+      </div>
     );
   };
 
-  const NotificationDropdown = () => {
-    return (
-        <div ref={notificationsRef} className="absolute right-0 top-14 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden animate-slide-down z-50">
-        <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800/50 flex items-center justify-between">
-            <h3 className="font-bold text-slate-900 dark:text-white text-lg">Notifications</h3>
-        </div>
-        <div className="max-h-96 overflow-y-auto">
-            {notifications.filter(n => n.recipientId === currentUser?.id).length === 0 ? (
-            <div className="p-12 text-center">
-                <Bell size={48} className="mx-auto text-slate-300 dark:text-slate-600 mb-4" />
-                <p className="text-slate-500 dark:text-slate-400 font-medium">No notifications yet</p>
-            </div>
-            ) : (
-            notifications.filter(n => n.recipientId === currentUser?.id).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((notif, index) => {
-                const notifIcon = {
-                'like': <Heart size={16} className="text-pink-500 fill-current" />,
-                'comment': <MessageCircle size={16} className="text-blue-500" />,
-                'message': <MessageCircle size={16} className="text-emerald-500 fill-current" />
-                };
-                
-                const sender = allUsers.find(u => u.id === notif.senderId);
-                
-                return (
-                <div 
-                    key={notif.id} 
-                    onClick={() => handleNotificationClick(notif)}
-                    className={`p-5 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-all active:scale-[0.98] animate-slide-in-right ${!notif.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/20' : ''}`}
-                    style={{ animationDelay: `${index * 50}ms` }}
-                >
-                    <div className="flex items-start gap-3">
-                    <div className="relative">
-                        <div className="text-3xl animate-bounce-in">
-                          {sender?.profileImageURL ? 
-                            <img src={sender.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
-                            sender?.avatar || '👤'
-                          }
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm">
-                        {notifIcon[notif.type]}
-                        </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-slate-900 dark:text-slate-200 font-medium text-sm">
-                        <span className="font-bold">{sender?.name || 'Unknown'}</span> {notif.content}
-                        </p>
-                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">{formatTimestamp(notif.timestamp)}</p>
-                    </div>
-                    {!notif.isRead && (
-                        <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full animate-ping self-center"></div>
-                    )}
-                    </div>
-                </div>
-                );
-            })
-            )}
-        </div>
-        </div>
-    )
+  const handleProfileImageUpload = (e, type) => {
+    const file = e.target.files[0];
+    if (file) {
+      const tempUrl = URL.createObjectURL(file);
+      setCropImage(tempUrl);
+      setCropType(type);
+      setOnCropCompleteCallback(() => async (cropped) => {
+        try {
+          const compressed = await compressImage(cropped);
+          setProfileForm(prev => ({ ...prev, [type === 'profile' ? 'profileImageURL' : 'coverImageURL']: compressed }));
+        } catch (error) {
+          showToast('Failed to process image', 'error');
+        }
+      });
+    }
   };
 
   const ProfilePage = () => {
     const profileImageRef = useRef(null);
     const coverImageRef = useRef(null);
 
-    const compressImage = (imageData, maxWidth = 400, quality = 0.8) => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = imageData;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              const compressedReader = new FileReader();
-              compressedReader.readAsDataURL(blob);
-              compressedReader.onloadend = () => {
-                const base64String = compressedReader.result;
-                if (base64String.length > 50000) {
-                  reject(new Error('Image still too large after compression. Please use a smaller image.'));
-                } else {
-                  resolve(base64String);
-                }
-              };
-            },
-            'image/jpeg',
-            quality
-          );
-        };
-        img.onerror = reject;
-      });
-    };
-
-    const handleProfileImageUpload = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setCropImageData(event.target.result);
-          setCropAspectRatio(1);
-          setCropCallback(() => async (croppedImage) => {
-            try {
-              const compressed = await compressImage(croppedImage, 400, 0.8);
-              setProfileForm(prev => ({ ...prev, profileImageURL: compressed }));
-            } catch (error) {
-              showToast(error.message || 'Failed to process image', 'error');
-            }
-          });
-          setShowImageCrop(true);
-        };
-        reader.readAsDataURL(file);
-      }
-      e.target.value = '';
-    };
-
-    const handleCoverImageUpload = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setCropImageData(event.target.result);
-          setCropAspectRatio(16 / 9);
-          setCropCallback(() => async (croppedImage) => {
-            try {
-              const compressed = await compressImage(croppedImage, 800, 0.8);
-              setProfileForm(prev => ({ ...prev, coverImageURL: compressed }));
-            } catch (error) {
-              showToast(error.message || 'Failed to process image', 'error');
-            }
-          });
-          setShowImageCrop(true);
-        };
-        reader.readAsDataURL(file);
-      }
-      e.target.value = '';
-    };
-
-    const currentCoverImage = isEditingProfile ? profileForm.coverImageURL : currentUser?.coverImageURL;
-    const currentProfileImage = isEditingProfile ? profileForm.profileImageURL : currentUser?.profileImageURL;
-
     return (
-    <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-50 overflow-y-auto animate-fade-in no-scrollbar">
+      <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
-            <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center gap-4 border-b border-slate-200 dark:border-slate-700">
-                <button onClick={() => setShowProfilePage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
-                <div>
-                    <h2 className="font-bold text-lg text-slate-900 dark:text-white">{currentUser?.name}</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{userPosts.length} posts</p>
-                </div>
+          <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center gap-4 border-b border-slate-200 dark:border-slate-700">
+            <button onClick={() => setShowProfilePage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
+            <div>
+                <h2 className="font-bold text-lg text-slate-900 dark:text-white">Profile</h2>
             </div>
+          </div>
 
-            <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient overflow-hidden group">
-                {currentCoverImage && (
-                  <img src={currentCoverImage} alt="Cover" className="w-full h-full object-cover" />
+          <div className="relative h-48 md:h-64 bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 animate-gradient group/cover">
+            {profileForm.coverImageURL && (
+              <img src={profileForm.coverImageURL} alt="Cover" className="w-full h-full object-cover" />
+            )}
+            {isEditingProfile && (
+              <button 
+                onClick={() => coverImageRef.current?.click()}
+                className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/cover:opacity-100 transition-all"
+              >
+                <Camera size={32} className="text-white" />
+              </button>
+            )}
+            <input type="file" ref={coverImageRef} onChange={(e) => handleProfileImageUpload(e, 'cover')} accept="image/*" hidden />
+            <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in overflow-hidden group/avatar">
+                {profileForm.profileImageURL ? (
+                  <img src={profileForm.profileImageURL} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                ) : (
+                  profileForm.avatar
                 )}
                 {isEditingProfile && (
                   <button 
-                    onClick={() => coverImageRef.current?.click()}
-                    className="absolute top-4 right-4 p-3 bg-black/60 hover:bg-black/80 text-white rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all active:scale-95"
+                    onClick={() => profileImageRef.current?.click()}
+                    className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-all"
                   >
-                    <Camera size={20} />
+                    <Camera size={28} className="text-white" />
                   </button>
                 )}
-                <input type="file" ref={coverImageRef} onChange={handleCoverImageUpload} accept="image/*" hidden />
-                
-                <div className="absolute -bottom-16 left-6 w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-slate-300 flex items-center justify-center text-6xl shadow-xl animate-bounce-in overflow-hidden group/avatar">
-                    {currentProfileImage ? (
-                      <img src={currentProfileImage} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-6xl">{isEditingProfile ? profileForm.avatar : currentUser?.avatar}</span>
-                    )}
-                    {isEditingProfile && (
-                      <button 
-                        onClick={() => profileImageRef.current?.click()}
-                        className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-all"
-                      >
-                        <Camera size={28} className="text-white" />
-                      </button>
-                    )}
-                </div>
-                <input type="file" ref={profileImageRef} onChange={handleProfileImageUpload} accept="image/*" hidden />
             </div>
+            <input type="file" ref={profileImageRef} onChange={(e) => handleProfileImageUpload(e, 'profile')} accept="image/*" hidden />
+          </div>
 
-            <div className="pt-20 px-6 pb-6">
-                <div className="flex justify-end mb-4">
-                    {isEditingProfile ? (
-                        <div className="flex gap-2 animate-slide-in-right">
-                            <button onClick={() => { setIsEditingProfile(false); setProfileForm({ name: currentUser.name, bio: currentUser.bio, avatar: currentUser.avatar, email: currentUser.email || '', profileImageURL: currentUser.profileImageURL || '', coverImageURL: currentUser.coverImageURL || '' }); }} disabled={isSaving} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50">Cancel</button>
-                            <button onClick={handleSaveProfile} disabled={isSaving} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
-                              {isSaving ? <LoadingSpinner /> : 'Save'}
-                            </button>
-                        </div>
-                    ) : (
-                        <button onClick={() => setIsEditingProfile(true)} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white border-2 border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all animate-slide-in-left">Edit profile</button>
-                    )}
-                </div>
-                
-                {isEditingProfile ? (
-                    <div className="space-y-4 animate-fade-in">
-                        <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} placeholder="Name" className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
-                        <p className="text-slate-500 dark:text-slate-400 text-lg px-4">{currentUser?.username}</p>
-                        <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} placeholder="Bio" className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none resize-none" rows={3}/>
-                        <input type="email" placeholder="Email (optional)" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
-                    </div>
-                ) : (
-                    <div className="animate-slide-in-up">
-                        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{currentUser?.name}</h2>
-                        <p className="text-slate-500 dark:text-slate-400 text-lg mt-1">{currentUser?.username}</p>
-                        {currentUser?.email && <p className="text-slate-500 dark:text-slate-400 text-base mt-1">{currentUser.email}</p>}
-                        <p className="text-slate-700 dark:text-slate-300 text-base mt-3 leading-relaxed">{currentUser?.bio}</p>
-                        <div className="flex flex-wrap gap-2 mt-4">
-                            {currentUser?.badges && currentUser.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
-                        </div>
-                    </div>
-                )}
-            </div>
+          <div className="pt-20 px-6 pb-6">
+              <div className="flex justify-end mb-4">
+                  {isEditingProfile ? (
+                      <div className="flex gap-2 animate-slide-in-right">
+                          <button onClick={() => { setIsEditingProfile(false); setProfileForm({ name: currentUser.name, bio: currentUser.bio, avatar: currentUser.avatar, email: currentUser.email || '', profileImageURL: currentUser.profileImageURL || '', coverImageURL: currentUser.coverImageURL || '' }); }} disabled={isSaving} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50">Cancel</button>
+                          <button onClick={handleSaveProfile} disabled={isSaving} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
+                            {isSaving ? <LoadingSpinner /> : 'Save'}
+                          </button>
+                      </div>
+                  ) : (
+                      <button onClick={() => setIsEditingProfile(true)} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white border-2 border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all animate-slide-in-left">Edit profile</button>
+                  )}
+              </div>
+              
+              {isEditingProfile ? (
+                  <div className="space-y-4 animate-fade-in">
+                      <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} placeholder="Name" className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
+                      <p className="text-slate-500 dark:text-slate-400 text-lg px-4">{currentUser?.username}</p>
+                      <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} placeholder="Bio" className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none resize-none" rows={3}/>
+                      <input type="email" placeholder="Email (optional)" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
+                  </div>
+              ) : (
+                  <div className="animate-slide-in-up">
+                      <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{currentUser?.name}</h2>
+                      <p className="text-slate-500 dark:text-slate-400 text-lg mt-1">{currentUser?.username}</p>
+                      {currentUser?.email && <p className="text-slate-500 dark:text-slate-400 text-base mt-1">{currentUser.email}</p>}
+                      <p className="text-slate-700 dark:text-slate-300 text-base mt-3 leading-relaxed">{currentUser?.bio}</p>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                          {currentUser?.badges && currentUser.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
+                      </div>
+                  </div>
+              )}
+          </div>
 
-            <div className="p-4 space-y-4">
-              {userPosts.map((post, index) => (
-                <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                  <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
-                </div>
-              ))}
-            </div>
+          <div className="p-4 space-y-4">
+            {userPosts.map((post, index) => (
+              <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
+                <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
+              </div>
+            ))}
+          </div>
         </div>
-    </div>
+      </div>
     )
   };
 
@@ -1707,7 +1614,7 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
                         <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
                              <div className="p-5 flex justify-between items-center">
                                 <div className="flex items-center gap-3">
-                                    {settings.darkMode ? <Moon className="text-indigo-400"/> : <Sun className="text-amber-500" />}
+                                    {settings.darkMode ? <Moon className="text-indigo-400"/> : <Sun className="text-amber-500" /> }
                                     <span className="font-medium text-slate-800 dark:text-slate-200">Dark Mode</span>
                                 </div>
                                 <button onClick={() => handleSettingChange('darkMode', !settings.darkMode)} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.darkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
@@ -1933,61 +1840,22 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
     const [messageText, setMessageText] = useState('');
     const fileInputRef = useRef(null);
 
-    const compressImage = (imageData, maxWidth = 600, quality = 0.7) => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = imageData;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              const compressedReader = new FileReader();
-              compressedReader.readAsDataURL(blob);
-              compressedReader.onloadend = () => {
-                resolve(compressedReader.result);
-              };
-            },
-            'image/jpeg',
-            quality
-          );
-        };
-        img.onerror = reject;
-      });
-    };
-
     const handleImageUpload = (e) => {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setCropImageData(event.target.result);
-          setCropAspectRatio(null);
-          setCropCallback(() => async (croppedImage) => {
-            try {
-              const compressed = await compressImage(croppedImage, 600, 0.7);
-              handleSendMessage(selectedConversation.id, { type: 'image', image: compressed });
-            } catch (error) {
-              showToast('Failed to process image', 'error');
-            }
-          });
-          setShowImageCrop(true);
-        };
-        reader.readAsDataURL(file);
+        const tempUrl = URL.createObjectURL(file);
+        setCropImage(tempUrl);
+        setCropType('post');  // Free form for messages too
+        setOnCropCompleteCallback(() => async (cropped) => {
+          try {
+            const compressed = await compressImage(cropped);
+            handleSendMessage(selectedConversation.id, { type: 'image', image: compressed });
+          } catch (error) {
+            showToast('Failed to process image', 'error');
+          }
+        });
       }
-      e.target.value = '';
+      if (e.target) e.target.value = '';
     };
 
     return (
@@ -2187,24 +2055,36 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
       }
     }, [groupMessages]);
 
-    const handleSendLocal = () => {
+    const handleSendGroupMessage = async () => {
       if (!localGroupChatMessage.trim() || !currentUser) return;
       
-      const newMessage = {
-        userId: currentUser.id,
-        text: localGroupChatMessage,
-        timestamp: new Date().toISOString(),
-        user: currentUser
-      };
-      
-      setGroupMessages(prev => [...prev, newMessage]);
-      setLocalGroupChatMessage('');
-      
-      setTimeout(() => {
-        if (groupChatScrollRef.current) {
-          groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
-        }
-      }, 100);
+      try {
+        const newMessage = {
+          senderId: currentUser.id,
+          text: localGroupChatMessage,
+          timestamp: new Date().toISOString()
+        };
+        
+        const result = await apiRequest('POST', 'groupchat', newMessage);
+        
+        const messageWithId = {
+          ...newMessage,
+          id: result.id || result.data?.id,
+          user: currentUser
+        };
+        
+        setGroupMessages(prev => [...prev, messageWithId]);
+        setLocalGroupChatMessage('');
+        
+        setTimeout(() => {
+          if (groupChatScrollRef.current) {
+            groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
+          }
+        }, 100);
+      } catch (error) {
+        showToast('Failed to send group message.', 'error');
+        console.error(error);
+      }
     };
 
     return (
@@ -2229,10 +2109,10 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
             </div>
           ) : (
             groupMessages.map((msg, index) => {
-              const isOwnMessage = msg.userId === currentUser?.id;
+              const isOwnMessage = msg.senderId === currentUser?.id;
               return (
                 <div 
-                  key={index} 
+                  key={msg.id || index} 
                   className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} animate-slide-in-up`}
                   style={{ animationDelay: `${index * 30}ms` }}
                 >
@@ -2271,14 +2151,14 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
               onChange={(e) => setLocalGroupChatMessage(e.target.value)}
               onKeyPress={(e) => {
                 if (e.key === 'Enter' && localGroupChatMessage.trim()) {
-                  handleSendLocal();
+                  handleSendGroupMessage();
                 }
               }}
               placeholder="Message the team..."
               className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-5 py-3 border-2 border-transparent focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
             />
             <button
-              onClick={handleSendLocal}
+              onClick={handleSendGroupMessage}
               disabled={!localGroupChatMessage.trim()}
               className="px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -2380,7 +2260,7 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
                     currentUser.profileImageURL ? 
                     <img src={currentUser.profileImageURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover" /> :
                     currentUser.avatar
-                ) : <User className="w-10 h-10 rounded-full p-2 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"/>
+                ) : <User className="w-10 h-10 rounded-full p-2 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400"/> 
                 }
               </button>
               {isAuthenticated && showProfileMenu && (
@@ -2514,8 +2394,8 @@ const AuthModal = ({ onLogin, onSignup, onClose }) => {
       {showGroupChat && isAuthenticated && <GroupChatPage />}
       {showUserSearch && isAuthenticated && <UserSearchModal />}
       {viewingUser && <UserProfileView user={viewingUser} />}
-      {showImageCrop && <ImageCropModal isOpen={showImageCrop} onClose={() => setShowImageCrop(false)} imageData={cropImageData} onCrop={cropCallback} aspectRatio={cropAspectRatio} />}
-
+      {cropImage && <CropModal imageSrc={cropImage} cropType={cropType} onCropComplete={onCropCompleteCallback} onClose={() => setCropImage(null)} />}
+      
       {toast && (
         <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl z-[70] animate-slide-in-up ${
           toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700'
