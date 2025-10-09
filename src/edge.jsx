@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Heart, MessageCircle, Plus, Search, Home, Briefcase, ShoppingBag, User, X, DollarSign, Send, Bookmark, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Compass, Trash2, ShieldCheck, Baby, Code, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Palette } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Heart, MessageCircle, Plus, Search, Home, User, X, Send, Star, MoreVertical, Image as ImageIcon, CheckCircle, Award, Zap, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, TrendingUp, Sparkles, RefreshCw, Moon, Sun, Users, Trophy, Target, Clock, Flame } from 'lucide-react';
 
 // --- IMPORTANT: Set your Google Apps Script Web App URL here ---
 const SCRIPT_URL = '/api';
@@ -31,12 +31,11 @@ const apiRequest = async (method, path, data = null, id = null) => {
         
         const jsonData = responseText ? JSON.parse(responseText) : { status: 'success' };
 
-if (jsonData.status === 'error') {
-    throw new Error(jsonData.message || 'Unknown error');
-}
+        if (jsonData.status === 'error') {
+            throw new Error(jsonData.message || 'Unknown error');
+        }
 
-// <<< NEW: return the .data when present (so callers get an array/object directly) >>>
-return jsonData.data !== undefined ? jsonData.data : jsonData;
+        return jsonData.data !== undefined ? jsonData.data : jsonData;
 
     } catch (error) {
         console.error('💥 Full Error:', {
@@ -93,20 +92,19 @@ const SkeletonCard = () => (
       <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full animate-pulse"></div>
       <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6 animate-pulse"></div>
     </div>
-    <div className="mt-4 h-48 bg-slate-200 dark:bg-slate-700 rounded-2xl animate-pulse"></div>
   </div>
 );
 
 const Badge = ({ name }) => {
     const badgeConfig = {
         'Regional Manager': { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-500/30', icon: <Award size={14} className="flex-shrink-0" /> },
-        'Branch Manager': { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-500/30', icon: <ShieldCheck size={14} className="flex-shrink-0" /> },
-        'Warehouse Associate': { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: <Briefcase size={14} className="flex-shrink-0" /> },
+        'Branch Manager': { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-500/30', icon: <Award size={14} className="flex-shrink-0" /> },
+        'Warehouse Associate': { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: <Target size={14} className="flex-shrink-0" /> },
         'Pro Picker': { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-500/30', icon: <Zap size={14} className="flex-shrink-0" /> },
         'Pro Receiver': { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-500/30', icon: <TrendingUp size={14} className="flex-shrink-0" /> },
         'Pro Stacker': { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', border: 'border-cyan-200 dark:border-cyan-500/30', icon: <Star size={14} className="flex-shrink-0" /> },
-        'Developer': { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-500/30', icon: <Zap size={14} className="flex-shrink-0" /> },
-
+        'Speed Demon': { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-200 dark:border-red-500/30', icon: <Flame size={14} className="flex-shrink-0" /> },
+        'Team Player': { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400', border: 'border-indigo-200 dark:border-indigo-500/30', icon: <Users size={14} className="flex-shrink-0" /> },
     };
     const config = badgeConfig[name] || { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: null };
     
@@ -144,24 +142,9 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
     );
 };
 
-const StarRating = ({ rating, totalStars = 5 }) => (
-    <div className="flex items-center">
-        {[...Array(totalStars)].map((_, index) => {
-            const starValue = index + 1;
-            return (
-                <Star
-                    key={index}
-                    size={20}
-                    className={`transition-colors ${starValue <= rating ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`}
-                />
-            );
-        })}
-    </div>
-);
-
 const EdgeApp = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('foryou');
+  const [activeTab, setActiveTab] = useState('feed');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState(null);
@@ -174,7 +157,6 @@ const EdgeApp = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfilePage, setShowProfilePage] = useState(false);
   const [showSettingsPage, setShowSettingsPage] = useState(false);
-  const [profileTab, setProfileTab] = useState('posts');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -187,6 +169,8 @@ const EdgeApp = () => {
   const [showUserSearch, setShowUserSearch] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [viewingUser, setViewingUser] = useState(null);
+  const [showGroupChat, setShowGroupChat] = useState(false);
+  const [groupChatMessage, setGroupChatMessage] = useState('');
   
   const [posts, setPosts] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -195,13 +179,13 @@ const EdgeApp = () => {
   const [interactions, setInteractions] = useState([]);
   const [comments, setComments] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [groupMessages, setGroupMessages] = useState([]);
+  const [leaderboardData, setLeaderboardData] = useState([]);
   
   const [currentUser, setCurrentUser] = useState(null);
 
   const [settings, setSettings] = useState({
       darkMode: false,
-      emailNotifications: true,
-      pushNotifications: false,
   });
 
   const scrollRef = useRef(null);
@@ -209,6 +193,7 @@ const EdgeApp = () => {
   const touchStartY = useRef(0);
   const profileMenuRef = useRef(null);
   const notificationsRef = useRef(null);
+  const groupChatScrollRef = useRef(null);
   
   const [profileForm, setProfileForm] = useState({
     name: '',
@@ -216,8 +201,6 @@ const EdgeApp = () => {
     avatar: '',
     email: ''
   });
-
-  const categories = ['Picking', 'Receiving', 'Stacking', 'Inventory', 'Management', 'Maintenance', 'Other'];
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
@@ -247,8 +230,9 @@ const EdgeApp = () => {
             apiRequest('GET', 'notifications'),
         ]);
 
-        const enrichedPosts = postsData.map(post => {
-            // Parse images if stored as JSON string
+        const enrichedPosts = postsData
+          .filter(post => post.type === 'post' || !post.type)
+          .map(post => {
             let imageArray = [];
             if (post.images) {
                 try {
@@ -269,7 +253,6 @@ const EdgeApp = () => {
             };
         });
 
-        // Enrich conversations with user data and messages
         const enrichedConvos = convosData.map(conv => {
             const participantIds = (conv.participantIds || '').split(',').map(s => s.trim()).filter(Boolean);
             const otherUserId = participantIds.find(pid => pid !== currentUser?.id) || participantIds[0];
@@ -289,6 +272,16 @@ const EdgeApp = () => {
             };
         });
 
+        // Generate leaderboard data
+        const leaderboard = usersData.map(user => ({
+            ...user,
+            linesPickedToday: Math.floor(Math.random() * 500) + 100,
+            linesPickedWeek: Math.floor(Math.random() * 3000) + 500,
+            avgSpeed: (Math.random() * 50 + 50).toFixed(1),
+            streak: Math.floor(Math.random() * 30),
+            achievements: Math.floor(Math.random() * 15)
+        })).sort((a, b) => b.linesPickedWeek - a.linesPickedWeek);
+
         setAllUsers(usersData);
         setPosts(enrichedPosts);
         setInteractions(interactionsData);
@@ -296,6 +289,7 @@ const EdgeApp = () => {
         setMessages(messagesData);
         setConversations(enrichedConvos);
         setNotifications(notificationsData);
+        setLeaderboardData(leaderboard);
         
     } catch (error) {
         showToast("Failed to fetch data from database.", "error");
@@ -322,8 +316,6 @@ const EdgeApp = () => {
         
         const settingsToApply = savedSettings ? JSON.parse(savedSettings) : {
             darkMode: user.darkMode || false,
-            emailNotifications: true,
-            pushNotifications: false
         };
         setSettings(settingsToApply);
       } else {
@@ -352,11 +344,12 @@ const EdgeApp = () => {
   }, [currentUser, interactions, posts.length]);
 
   const handleNotificationClick = useCallback((notification) => {
-    // Mark as read and navigate to related content
     if (notification.relatedPostId) {
       setHighlightedPost(notification.relatedPostId);
+      setActiveTab('feed');
       setTimeout(() => setHighlightedPost(null), 2000);
     }
+    setShowNotifications(false);
   }, []);
 
   const useOutsideAlerter = (ref, action) => {
@@ -442,17 +435,15 @@ const EdgeApp = () => {
       return;
     }
 
-    // FIX: Validate password - convert both to strings and trim to handle type mismatches
     const userPassword = String(user.password || '').trim();
     const inputPassword = String(formData.password || '').trim();
     
     if (!userPassword || userPassword !== inputPassword) {
       showToast('Incorrect password.', 'error');
-      console.log('Password mismatch:', { stored: userPassword, input: inputPassword, storedType: typeof user.password, inputType: typeof formData.password });
       return;
     }
 
-    const userSettings = { darkMode: user.darkMode || false, emailNotifications: true, pushNotifications: false };
+    const userSettings = { darkMode: user.darkMode || false };
     setSettings(userSettings);
     setCurrentUser(user);
     setProfileForm(user);
@@ -462,7 +453,6 @@ const EdgeApp = () => {
     localStorage.setItem('edge-settings', JSON.stringify(userSettings));
     showToast(`Welcome back, ${user.name}!`);
     
-    // Refresh data after login to get conversations, etc.
     fetchData();
   }, [allUsers, showToast, fetchData]);
 
@@ -486,14 +476,14 @@ const EdgeApp = () => {
 
     try {
         const result = await apiRequest('POST', 'users', newUser);
-        if (result.status === 'success') {
-            const userWithId = { ...newUser, id: result.id || result.data.id };
+        if (result.status === 'success' || result.id) {
+            const userWithId = { ...newUser, id: result.id || result.data?.id };
             setAllUsers(prev => [...prev, userWithId]);
             setCurrentUser(userWithId);
             setProfileForm(userWithId);
             setIsAuthenticated(true);
             setShowAuthModal(false);
-            const userSettings = { darkMode: false, emailNotifications: true, pushNotifications: false };
+            const userSettings = { darkMode: false };
             setSettings(userSettings);
             localStorage.setItem('edge-currentUser', JSON.stringify(userWithId));
             localStorage.setItem('edge-settings', JSON.stringify(userSettings));
@@ -510,7 +500,7 @@ const EdgeApp = () => {
     setShowProfileMenu(false); 
     setShowProfilePage(false); 
     localStorage.removeItem('edge-currentUser');
-    setSettings({ darkMode: false, emailNotifications: true, pushNotifications: false });
+    setSettings({ darkMode: false });
     showToast('Logged out successfully');
   }, [showToast]);
   
@@ -539,7 +529,6 @@ const EdgeApp = () => {
     const post = posts.find(p => p.id === postId);
     if (!post) return;
 
-    // Optimistic UI update
     const wasLiked = post.liked;
     setPosts(currentPosts => 
       currentPosts.map(p => 
@@ -558,10 +547,9 @@ const EdgeApp = () => {
             const newLike = { postId, userId: currentUser.id, interactionType: 'like' };
             const result = await apiRequest('POST', 'interactions', newLike);
             if(result.data || result.id) {
-              const likeWithId = { ...newLike, id: result.id || result.data.id, timestamp: new Date().toISOString() };
+              const likeWithId = { ...newLike, id: result.id || result.data?.id, timestamp: new Date().toISOString() };
               setInteractions(prev => [...prev, likeWithId]);
               
-              // FIX: Create notification for post owner
               if (post.userId !== currentUser.id) {
                   await apiRequest('POST', 'notifications', {
                       recipientId: post.userId,
@@ -569,14 +557,14 @@ const EdgeApp = () => {
                       type: 'like',
                       relatedPostId: postId,
                       content: `${currentUser.name} liked your post`,
-                      isRead: false
+                      isRead: false,
+                      timestamp: new Date().toISOString()
                   });
               }
             }
         }
     } catch (error) {
         showToast('Like action failed.', 'error');
-        // Revert UI on failure
         setPosts(currentPosts => 
           currentPosts.map(p => 
             p.id === postId ? { ...p, likes: wasLiked ? p.likes + 1 : p.likes - 1, liked: wasLiked } : p 
@@ -584,10 +572,6 @@ const EdgeApp = () => {
         );
     }
   }, [posts, interactions, currentUser, showToast]);
-  
-  const handleBookmark = useCallback((postId) => {
-    showToast('Bookmark functionality not fully connected yet.');
-  }, [showToast]);
   
   const nextImage = useCallback((postId) => {
     const post = posts.find(p => p.id === postId);
@@ -611,15 +595,14 @@ const EdgeApp = () => {
   const handlePostSubmit = useCallback(async (postData) => {
       const dataToSubmit = {
           ...postData,
-          userId: currentUser.id
+          userId: currentUser.id,
+          type: 'post'
       };
       
       try {
           if (postData.id) {
-              // Editing existing post
               const result = await apiRequest('PUT', 'posts', dataToSubmit, postData.id);
               
-              // Parse images if returned as JSON string
               let imageArray = [];
               if (result.data?.images) {
                   try {
@@ -637,10 +620,8 @@ const EdgeApp = () => {
               } : p));
               showToast('Post updated successfully!');
           } else {
-              // Creating new post
               const result = await apiRequest('POST', 'posts', dataToSubmit);
               
-              // Parse returned images
               let imageArray = [];
               if (result.data?.images) {
                   try {
@@ -652,7 +633,7 @@ const EdgeApp = () => {
               
               const newPost = {
                   ...result.data, 
-                  id: result.id || result.data.id,
+                  id: result.id || result.data?.id,
                   images: Array.isArray(imageArray) ? imageArray : [],
                   user: currentUser, 
                   commentsList: [], 
@@ -700,15 +681,18 @@ const EdgeApp = () => {
         postId,
         userId: currentUser.id,
         text: commentText,
+        timestamp: new Date().toISOString()
     };
     
     try {
         const result = await apiRequest('POST', 'comments', newCommentData);
         const newComment = {
-            ...result.data,
-            id: result.id || result.data.id,
+            ...newCommentData,
+            id: result.id || result.data?.id,
             user: currentUser
         };
+        
+        setComments(prev => [...prev, newComment]);
         
         setPosts(currentPosts => currentPosts.map(post => {
             if(post.id === postId) {
@@ -720,7 +704,6 @@ const EdgeApp = () => {
             return post;
         }));
         
-        // FIX: Create notification for post owner
         const post = posts.find(p => p.id === postId);
         if (post && post.userId !== currentUser.id) {
             await apiRequest('POST', 'notifications', {
@@ -729,7 +712,8 @@ const EdgeApp = () => {
                 type: 'comment',
                 relatedPostId: postId,
                 content: `${currentUser.name} commented on your post`,
-                isRead: false
+                isRead: false,
+                timestamp: new Date().toISOString()
             });
         }
         
@@ -739,7 +723,6 @@ const EdgeApp = () => {
     }
   }, [currentUser, showToast, posts]);
 
-  // FIX: Implement direct messaging
   const handleSendMessage = useCallback(async (conversationId, messageData) => {
       if (!currentUser) return;
       
@@ -750,16 +733,17 @@ const EdgeApp = () => {
               text: messageData.text || '',
               imageUrl: messageData.image || '',
               type: messageData.type || 'text',
+              timestamp: new Date().toISOString()
           };
           
           const result = await apiRequest('POST', 'messages', newMessage);
           const messageWithId = {
               ...newMessage,
-              id: result.id || result.data.id,
-              timestamp: new Date().toISOString()
+              id: result.id || result.data?.id,
           };
           
-          // Update local state
+          setMessages(prev => [...prev, messageWithId]);
+          
           setConversations(prev => prev.map(conv => {
               if (conv.id === conversationId) {
                   return {
@@ -772,7 +756,6 @@ const EdgeApp = () => {
               return conv;
           }));
           
-          // Update selected conversation
           if (selectedConversation?.id === conversationId) {
               setSelectedConversation(prev => ({
                   ...prev,
@@ -780,7 +763,6 @@ const EdgeApp = () => {
               }));
           }
           
-          // FIX: Create notification for recipient
           const conv = conversations.find(c => c.id === conversationId);
           if (conv) {
               const recipientId = conv.userId;
@@ -791,7 +773,8 @@ const EdgeApp = () => {
                       type: 'message',
                       relatedPostId: '',
                       content: `${currentUser.name} sent you a message`,
-                      isRead: false
+                      isRead: false,
+                      timestamp: new Date().toISOString()
                   });
               }
           }
@@ -802,12 +785,10 @@ const EdgeApp = () => {
       }
   }, [currentUser, conversations, selectedConversation, showToast]);
 
-  // FIX: Implement start conversation
   const startConversation = useCallback(async (user) => {
       if (!currentUser) return;
       
       try {
-          // Check if conversation already exists
           const existing = conversations.find(conv => 
               conv.userId === user.id || 
               (conv.participantIds && conv.participantIds.includes(user.id))
@@ -820,7 +801,6 @@ const EdgeApp = () => {
               return;
           }
           
-          // Create new conversation
           const newConv = {
               participantIds: `${currentUser.id},${user.id}`,
               lastMessageTimestamp: new Date().toISOString()
@@ -829,7 +809,7 @@ const EdgeApp = () => {
           const result = await apiRequest('POST', 'conversations', newConv);
           const convWithId = {
               ...newConv,
-              id: result.id || result.data.id,
+              id: result.id || result.data?.id,
               user: user,
               userId: user.id,
               messages: [],
@@ -849,22 +829,273 @@ const EdgeApp = () => {
       }
   }, [currentUser, conversations, showToast]);
 
-  const filteredAndSortedPosts = posts
-    .filter(post => {
-      if (activeTab === 'services' && post.type !== 'service') return false;
-      if (activeTab === 'marketplace' && post.type !== 'item') return false;
-      if (searchQuery && !post.content?.toLowerCase().includes(searchQuery.toLowerCase()) && !post.title?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      return new Date(b.timestamp) - new Date(a.timestamp);
-    });
+  const handleSendGroupMessage = useCallback(() => {
+    if (!groupChatMessage.trim() || !currentUser) return;
+    
+    const newMessage = {
+      userId: currentUser.id,
+      text: groupChatMessage,
+      timestamp: new Date().toISOString(),
+      user: currentUser
+    };
+    
+    setGroupMessages(prev => [...prev, newMessage]);
+    setGroupChatMessage('');
+    
+    setTimeout(() => {
+      if (groupChatScrollRef.current) {
+        groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
+      }
+    }, 100);
+  }, [groupChatMessage, currentUser]);
 
-  const userPosts = currentUser ? posts.filter(p => p.userId === currentUser.id) : [];
-  const userServices = userPosts.filter(p => p.type === 'service');
-  const userItems = userPosts.filter(p => p.type === 'item');
-  const unreadCount = notifications.filter(n => !n.isRead && n.recipientId === currentUser?.id).length;
+  const filteredAndSortedPosts = useMemo(() => {
+    return posts
+      .filter(post => {
+        if (searchQuery && !post.content?.toLowerCase().includes(searchQuery.toLowerCase()) && !post.title?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [posts, searchQuery]);
+
+  const userPosts = useMemo(() => {
+    return currentUser ? posts.filter(p => p.userId === currentUser.id) : [];
+  }, [currentUser, posts]);
+
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !n.isRead && n.recipientId === currentUser?.id).length;
+  }, [notifications, currentUser?.id]);
   
+  const PostCard = React.memo(({ post, isAuthenticated, onGuestAction, onLike, onNextImage, onPrevImage, onToggleComments, onCommentSubmit, onEdit, onDelete, highlighted }) => {
+    const currentIndex = currentImageIndex[post.id] || 0;
+    const isCommentsExpanded = expandedComments === post.id;
+    const [showActions, setShowActions] = useState(false);
+    const [commentText, setCommentText] = useState('');
+    const [commentMentionSuggestions, setCommentMentionSuggestions] = useState([]);
+    const cardRef = useRef(null);
+
+    useEffect(() => {
+        if (highlighted && cardRef.current) {
+            cardRef.current.classList.add('highlight');
+            setTimeout(() => {
+                cardRef.current?.classList.remove('highlight');
+            }, 2000);
+        }
+    }, [highlighted]);
+
+    const handleCommentChange = (e) => {
+      const value = e.target.value;
+      setCommentText(value);
+      
+      const lastWord = value.split(' ').pop();
+      if (lastWord.startsWith('@') && lastWord.length > 1) {
+        const query = lastWord.slice(1).toLowerCase();
+        const suggestions = allUsers.filter(user => 
+          user.username.toLowerCase().includes(query) || 
+          user.name.toLowerCase().includes(query)
+        ).slice(0, 5);
+        setCommentMentionSuggestions(suggestions);
+      } else {
+        setCommentMentionSuggestions([]);
+      }
+    };
+
+    const insertCommentMention = (username) => {
+      const words = commentText.split(' ');
+      words[words.length - 1] = username + ' ';
+      setCommentText(words.join(' '));
+      setCommentMentionSuggestions([]);
+    };
+
+    const handleComment = () => {
+        onCommentSubmit(post.id, commentText);
+        setCommentText('');
+        setCommentMentionSuggestions([]);
+    }
+
+    const isOwnPost = isAuthenticated && currentUser?.username === post.user?.username;
+
+    return (
+        <div id={`post-${post.id}`} ref={cardRef} className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 ease-out group relative overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1">
+            <div className="p-6">
+                <div className="flex items-start gap-4 mb-4">
+                    <button 
+                      onClick={() => {
+                        const user = allUsers.find(u => u.username === post.user?.username);
+                        if (user) {
+                          if (isAuthenticated && user.username === currentUser?.username) {
+                            setShowProfilePage(true);
+                          } else {
+                            setViewingUser(user);
+                          }
+                        }
+                      }}
+                      className="text-4xl hover:scale-110 active:scale-95 transition-transform animate-bounce-in"
+                    >
+                      {typeof post.user?.avatar === 'string' && post.user.avatar.startsWith('data:') ? 
+                        <img src={post.user.avatar} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
+                        post.user?.avatar
+                      }
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <button 
+                          onClick={() => {
+                            const user = allUsers.find(u => u.username === post.user?.username);
+                            if (user) {
+                              if (isAuthenticated && user.username === currentUser?.username) {
+                                setShowProfilePage(true);
+                              } else {
+                                setViewingUser(user);
+                              }
+                            }
+                          }}
+                          className="flex items-center gap-2 flex-wrap mb-1 text-left hover:opacity-80 transition-opacity"
+                        >
+                            <span className="font-bold text-slate-900 dark:text-white text-base truncate">{post.user?.name}</span>
+                            {post.user?.verified && <CheckCircle size={18} className="text-blue-500 fill-current flex-shrink-0 animate-scale-in" />}
+                            <span className="text-slate-500 dark:text-slate-400 text-sm">· {formatTimestamp(post.timestamp)}</span>
+                        </button>
+                        <div className="flex items-center flex-wrap gap-2 mt-2">
+                           {post.user?.badges && post.user.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
+                        </div>
+                    </div>
+                    {isOwnPost && (
+                        <div className="relative">
+                            <button type="button" onClick={() => setShowActions(!showActions)} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95">
+                                <MoreVertical size={20} />
+                            </button>
+                             {showActions && (
+                                <div className="absolute right-0 top-12 w-48 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl z-20 overflow-hidden animate-slide-down">
+                                    <button onClick={() => { onEdit(post); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-95 transition-all"><Edit2 size={18}/> Edit Post</button>
+                                    <button onClick={() => { onDelete(post.id); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all border-t border-slate-100 dark:border-slate-700"><Trash2 size={18}/> Delete Post</button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <p className="text-slate-700 dark:text-slate-300 text-base leading-relaxed mb-4 whitespace-pre-wrap break-words animate-slide-in-up">
+                    {post.content && post.content.split(' ').map((word, i) => {
+                        if (word.startsWith('@')) {
+                            return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">{word} </span>;
+                        }
+                        return word + ' ';
+                    })}
+                </p>
+
+                {Array.isArray(post.images) && post.images.length > 0 && (
+                    <div className="relative mb-4 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-700 group/image animate-scale-in">
+                        <div className="aspect-video flex items-center justify-center">
+                            <img src={post.images[currentIndex]} alt="" className="w-full h-full object-cover" />
+                        </div>
+                        {post.images.length > 1 && (
+                            <>
+                                <button onClick={() => onPrevImage(post.id)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
+                                    <ChevronLeft size={24} />
+                                </button>
+                                <button onClick={() => onNextImage(post.id)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
+                                    <ChevronRight size={24} />
+                                </button>
+                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+                                    {post.images.map((_, idx) => (
+                                        <div key={idx} className={`w-2 h-2 rounded-full transition-all ${idx === currentIndex ? 'bg-white w-6' : 'bg-white/50'}`} />
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => isAuthenticated ? onLike(post.id) : onGuestAction()} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all active:scale-95 group/like ${post.liked ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
+                            <Heart size={20} className={`transition-all ${post.liked ? 'fill-current animate-heart-beat' : 'group-hover/like:scale-110'}`} />
+                            <span className="font-bold text-sm">{post.likes || 0}</span>
+                        </button>
+                        <button onClick={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} className="flex items-center gap-2 px-4 py-2.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
+                            <MessageCircle size={20} />
+                            <span className="font-bold text-sm">{post.commentsList?.length || 0}</span>
+                        </button>
+                    </div>
+                </div>
+
+                {isCommentsExpanded && isAuthenticated && (
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4 animate-slide-down">
+                        <div className="relative">
+                            <div className="flex gap-3">
+                                <div className="text-2xl">{currentUser?.avatar}</div>
+                                <div className="flex-1 relative">
+                                    <textarea
+                                        value={commentText}
+                                        onChange={handleCommentChange}
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
+                                                e.preventDefault();
+                                                handleComment();
+                                            }
+                                        }}
+                                        placeholder="Add a comment... (use @ to mention)"
+                                        rows={2}
+                                        className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-sm"
+                                    />
+                                    {commentMentionSuggestions.length > 0 && (
+                                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
+                                            {commentMentionSuggestions.map((user, index) => (
+                                                <button
+                                                    key={user.id}
+                                                    onClick={() => insertCommentMention(user.username)}
+                                                    className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left"
+                                                >
+                                                    <div className="text-xl">{user.avatar}</div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-slate-900 dark:text-white truncate text-xs">{user.name}</p>
+                                                        <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={handleComment}
+                                    disabled={!commentText.trim()}
+                                    className="self-end px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Send size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {post.commentsList && post.commentsList.length > 0 && (
+                            <div className="space-y-3">
+                                {post.commentsList.map((comment, idx) => (
+                                    <div key={idx} className="flex gap-3 animate-slide-in-up" style={{ animationDelay: `${idx * 50}ms` }}>
+                                        <div className="text-2xl">{comment.user?.avatar}</div>
+                                        <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-3">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-bold text-slate-900 dark:text-white text-sm">{comment.user?.name}</span>
+                                                <span className="text-slate-500 dark:text-slate-400 text-xs">· {formatTimestamp(comment.timestamp)}</span>
+                                            </div>
+                                            <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                                {comment.text.split(' ').map((word, i) => {
+                                                    if (word.startsWith('@')) {
+                                                        return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold">{word} </span>;
+                                                    }
+                                                    return word + ' ';
+                                                })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+  });
+
   const AuthModal = ({ onLogin, onSignup, onClose }) => {
     const [authMode, setAuthMode] = useState('login');
     const [authForm, setAuthForm] = useState({ name: '', username: '', password: '', email: '' });
@@ -879,7 +1110,7 @@ const EdgeApp = () => {
             <div className="bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl p-8 w-full md:max-w-md border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce" onClick={(e) => e.stopPropagation()}>
                 <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-6 md:hidden"></div>
                 <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center shadow-xl mb-4 mx-auto animate-bounce-in">
+                    <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl mb-4 mx-auto animate-bounce-in">
                         <Zap size={28} className="text-white" />
                     </div>
                     <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 animate-slide-in-left">Welcome to Edge</h2>
@@ -889,18 +1120,18 @@ const EdgeApp = () => {
                 </div>
                 <div className="space-y-4">
                     {authMode === 'signup' && (
-                        <input type="text" name="name" placeholder="Full Name" value={authForm.name} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base animate-slide-in-left" />
+                        <input type="text" name="name" placeholder="Full Name" value={authForm.name} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base animate-slide-in-left" />
                     )}
-                    <input type="text" name="username" placeholder="Username" value={authForm.username} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base" />
-                    <input type="password" name="password" placeholder="Password" value={authForm.password} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base" />
+                    <input type="text" name="username" placeholder="Username" value={authForm.username} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base" />
+                    <input type="password" name="password" placeholder="Password" value={authForm.password} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all text-base" />
                 </div>
-                <button type="button" onClick={() => authMode === 'login' ? onLogin(authForm) : onSignup(authForm)} className="w-full mt-6 py-4 bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all text-base relative overflow-hidden group">
+                <button type="button" onClick={() => authMode === 'login' ? onLogin(authForm) : onSignup(authForm)} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all text-base relative overflow-hidden group">
                     <span className="relative z-10">{authMode === 'login' ? 'Login' : 'Create Account'}</span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-700 to-slate-900 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </button>
                 <p className="text-slate-600 dark:text-slate-400 text-base text-center mt-6">
                     {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
-                    <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-slate-900 dark:text-white hover:underline font-bold">
+                    <button type="button" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold">
                         {authMode === 'login' ? 'Sign up' : 'Login'}
                     </button>
                 </p>
@@ -909,16 +1140,10 @@ const EdgeApp = () => {
     );
   };
   
-  const CreateModal = ({ onPost, postToEdit, onClose, categories }) => {
-    const [createType, setCreateType] = useState(postToEdit?.type || 'post');
+  const CreateModal = ({ onPost, postToEdit, onClose }) => {
     const [formData, setFormData] = useState({
         id: postToEdit?.id || null,
-        title: postToEdit?.title || '',
         content: postToEdit?.content || '',
-        price: postToEdit?.price || '',
-        category: postToEdit?.category || '',
-        condition: postToEdit?.condition || '',
-        location: postToEdit?.location || '',
         images: postToEdit?.images || []
     });
     const [localMentionSuggestions, setLocalMentionSuggestions] = useState([]);
@@ -968,7 +1193,11 @@ const EdgeApp = () => {
     };
 
     const handleSubmit = () => {
-        onPost({...formData, type: createType});
+        if (!formData.content.trim()) {
+            showToast('Please write something!', 'error');
+            return;
+        }
+        onPost(formData);
     }
     
     return (
@@ -976,22 +1205,12 @@ const EdgeApp = () => {
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl p-6 md:p-8 w-full md:max-w-2xl border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl animate-slide-up-bounce max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-6 md:hidden"></div>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">{postToEdit ? 'Edit Post' : 'Create New'}</h2>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">{postToEdit ? 'Edit Post' : 'Create Post'}</h2>
               <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95"><X size={24} /></button>
             </div>
-            {!postToEdit && (
-                <div className="flex gap-2 mb-6 bg-slate-100 dark:bg-slate-800 p-2 rounded-2xl">
-                    <button onClick={() => setCreateType('post')} className={`flex-1 py-3 rounded-xl font-bold transition-all text-base ${ createType === 'post' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-lg scale-105' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white' }`}>Post</button>
-                    <button onClick={() => setCreateType('service')} className={`flex-1 py-3 rounded-xl font-bold transition-all text-base ${ createType === 'service' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-lg scale-105' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white' }`}>Service</button>
-                    <button onClick={() => setCreateType('item')} className={`flex-1 py-3 rounded-xl font-bold transition-all text-base ${ createType === 'item' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-lg scale-105' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white' }`}>Item</button>
-                </div>
-            )}
             <div className="space-y-4">
-              {(createType === 'service' || createType === 'item') && (
-                <input name="title" type="text" placeholder="Title" value={formData.title} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base" />
-              )}
               <div className="relative">
-                <textarea name="content" placeholder={createType === 'post' ? "What's on your mind? Use @ to mention someone..." : "Description (use @ to mention)"} value={formData.content} onChange={handleFormChange} rows={4} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all resize-none text-base" />
+                <textarea name="content" placeholder="What's on your mind? Use @ to mention someone..." value={formData.content} onChange={handleFormChange} rows={6} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-base" />
                 {localMentionSuggestions.length > 0 && (
                   <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
                     {localMentionSuggestions.map((user, index) => (
@@ -1011,24 +1230,7 @@ const EdgeApp = () => {
                   </div>
                 )}
               </div>
-              {(createType === 'service' || createType === 'item') && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input name="price" type="number" placeholder="Price" value={formData.price} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base" />
-                  {createType === 'service' && (
-                    <select name="category" value={formData.category} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base">
-                      <option value="">Select Category</option>
-                      {categories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
-                    </select>
-                  )}
-                  {createType === 'item' && (
-                    <>
-                      <input name="condition" type="text" placeholder="Condition" value={formData.condition} onChange={handleFormChange} className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base" />
-                      <input name="location" type="text" placeholder="Location" value={formData.location} onChange={handleFormChange} className="w-full md:col-span-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl px-5 py-4 border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all text-base" />
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl p-8 text-center hover:border-slate-900 dark:hover:border-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95" onClick={() => fileInputRef.current?.click()}>
+              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl p-8 text-center hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer active:scale-95" onClick={() => fileInputRef.current?.click()}>
                 <ImageIcon size={40} className="mx-auto text-slate-400 dark:text-slate-500 mb-3 animate-bounce-in" />
                 <p className="text-slate-600 dark:text-slate-400 font-medium">Tap to upload images</p>
                 <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple hidden />
@@ -1046,9 +1248,9 @@ const EdgeApp = () => {
                 </div>
               )}
             </div>
-            <button onClick={handleSubmit} className="w-full mt-6 py-4 bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base relative overflow-hidden group">
-                <span className="relative z-10 flex items-center gap-2"><Send size={20} />{postToEdit ? 'Save Changes' : 'Publish'}</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-700 to-slate-900 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <button onClick={handleSubmit} className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base relative overflow-hidden group">
+                <span className="relative z-10 flex items-center gap-2"><Send size={20} />{postToEdit ? 'Save Changes' : 'Post'}</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
             </button>
           </div>
         </div>
@@ -1060,11 +1262,6 @@ const EdgeApp = () => {
         <div ref={notificationsRef} className="absolute right-0 top-14 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden animate-slide-down z-50">
         <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800/50 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white text-lg">Notifications</h3>
-            {unreadCount > 0 && (
-            <button className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all active:scale-95">
-                Mark all read
-            </button>
-            )}
         </div>
         <div className="max-h-96 overflow-y-auto">
             {notifications.filter(n => n.recipientId === currentUser?.id).length === 0 ? (
@@ -1073,12 +1270,10 @@ const EdgeApp = () => {
                 <p className="text-slate-500 dark:text-slate-400 font-medium">No notifications yet</p>
             </div>
             ) : (
-            notifications.filter(n => n.recipientId === currentUser?.id).map((notif, index) => {
+            notifications.filter(n => n.recipientId === currentUser?.id).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((notif, index) => {
                 const notifIcon = {
                 'like': <Heart size={16} className="text-pink-500 fill-current" />,
                 'comment': <MessageCircle size={16} className="text-blue-500" />,
-                'follow': <User size={16} className="text-purple-500" />,
-                'mention': <span className="text-indigo-500 font-bold text-sm">@</span>,
                 'message': <MessageCircle size={16} className="text-emerald-500 fill-current" />
                 };
                 
@@ -1115,7 +1310,7 @@ const EdgeApp = () => {
         </div>
         </div>
     )
-    };
+  };
 
   const ProfilePage = () => {
     const fileInputRef = useRef(null);
@@ -1162,7 +1357,7 @@ const EdgeApp = () => {
                     {isEditingProfile ? (
                         <div className="flex gap-2 animate-slide-in-right">
                             <button onClick={() => { setIsEditingProfile(false); setProfileForm(currentUser); }} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all">Cancel</button>
-                            <button onClick={handleSaveProfile} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-slate-900 to-slate-700 rounded-full hover:shadow-xl active:scale-95 transition-all">Save</button>
+                            <button onClick={handleSaveProfile} className="px-6 py-3 text-base font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:shadow-xl active:scale-95 transition-all">Save</button>
                         </div>
                     ) : (
                         <button onClick={() => setIsEditingProfile(true)} className="px-6 py-3 text-base font-bold text-slate-800 dark:text-white border-2 border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all animate-slide-in-left">Edit profile</button>
@@ -1171,10 +1366,10 @@ const EdgeApp = () => {
                 
                 {isEditingProfile ? (
                     <div className="space-y-4 animate-fade-in">
-                        <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:outline-none"/>
+                        <input type="text" value={profileForm.name} onChange={(e) => setProfileForm(prev => ({...prev, name: e.target.value}))} className="text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
                         <p className="text-slate-500 dark:text-slate-400 text-lg px-4">{currentUser?.username}</p>
-                        <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:outline-none resize-none" rows={3}/>
-                        <input type="email" placeholder="Add your email" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-slate-900 dark:focus:border-white focus:outline-none"/>
+                        <textarea value={profileForm.bio} onChange={(e) => setProfileForm(prev => ({...prev, bio: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none resize-none" rows={3}/>
+                        <input type="email" placeholder="Add your email" value={profileForm.email} onChange={(e) => setProfileForm(prev => ({...prev, email: e.target.value}))} className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full border-2 border-slate-200 dark:border-slate-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none"/>
                     </div>
                 ) : (
                     <div className="animate-slide-in-up">
@@ -1187,31 +1382,12 @@ const EdgeApp = () => {
                         </div>
                     </div>
                 )}
-
             </div>
 
-            <div className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 sticky top-[73px] z-10">
-                <nav className="flex justify-around px-4">
-                    <button onClick={() => setProfileTab('posts')} className={`flex-1 py-4 text-base font-bold text-center relative active:scale-95 transition-all ${profileTab === 'posts' ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>Posts {profileTab === 'posts' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-1 bg-slate-900 dark:bg-white rounded-full animate-slide-in-left"></div>}</button>
-                    <button onClick={() => setProfileTab('services')} className={`flex-1 py-4 text-base font-bold text-center relative active:scale-95 transition-all ${profileTab === 'services' ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>Services {profileTab === 'services' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-1 bg-slate-900 dark:bg-white rounded-full animate-slide-in-left"></div>}</button>
-                    <button onClick={() => setProfileTab('items')} className={`flex-1 py-4 text-base font-bold text-center relative active:scale-95 transition-all ${profileTab === 'items' ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>Items {profileTab === 'items' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-1 bg-slate-900 dark:bg-white rounded-full animate-slide-in-left"></div>}</button>
-                </nav>
-            </div>
-            
             <div className="p-4 space-y-4">
-              {profileTab === 'posts' && userPosts.filter(p => p.type === 'post').map((post, index) => (
+              {userPosts.map((post, index) => (
                 <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                  <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onBookmark={handleBookmark} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
-                </div>
-              ))}
-              {profileTab === 'services' && userServices.map((post, index) => (
-                <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                  <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onBookmark={handleBookmark} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
-                </div>
-              ))}
-              {profileTab === 'items' && userItems.map((post, index) => (
-                <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                  <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onBookmark={handleBookmark} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
+                  <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
                 </div>
               ))}
             </div>
@@ -1255,7 +1431,7 @@ const EdgeApp = () => {
 
                 <div className="p-6 space-y-8">
                     <div className="animate-slide-in-up">
-                        <h3 className="text-base font-bold text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2"><Palette size={18}/> Appearance</h3>
+                        <h3 className="text-base font-bold text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2"><Settings size={18}/> Appearance</h3>
                         <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
                              <div className="p-5 flex justify-between items-center">
                                 <div className="flex items-center gap-3">
@@ -1268,27 +1444,73 @@ const EdgeApp = () => {
                             </div>
                         </div>
                     </div>
-
-                     <div className="animate-slide-in-up" style={{ animationDelay: '100ms' }}>
-                        <h3 className="text-base font-bold text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2"><Bell size={18}/> Notifications</h3>
-                        <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700">
-                             <div className="p-5 flex justify-between items-center">
-                                <span className="font-medium text-slate-800 dark:text-slate-200">Email Notifications</span>
-                                <button onClick={() => showToast("This setting is not connected yet.")} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.emailNotifications ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
-                                    <span className="w-6 h-6 bg-white rounded-full shadow transition-transform"></span>
-                                </button>
-                            </div>
-                             <div className="p-5 flex justify-between items-center">
-                                <span className="font-medium text-slate-800 dark:text-slate-200">Push Notifications</span>
-                                <button onClick={() => showToast("This setting is not connected yet.")} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.pushNotifications ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
-                                    <span className="w-6 h-6 bg-white rounded-full shadow transition-transform"></span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
+    );
+  };
+
+  const LeaderboardPage = () => {
+    return (
+      <div className="space-y-4">
+        <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 rounded-3xl border-2 border-amber-200 dark:border-amber-500/30 p-8 text-center animate-slide-in-up">
+          <div className="text-6xl mb-4">🏆</div>
+          <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Warehouse Champions</h2>
+          <p className="text-slate-600 dark:text-slate-400">This week's top performers</p>
+        </div>
+
+        {leaderboardData.slice(0, 10).map((user, index) => (
+          <div 
+            key={user.id} 
+            className={`bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 animate-slide-in-up hover:shadow-xl transition-all ${
+              index === 0 ? 'border-amber-400 dark:border-amber-500 bg-gradient-to-br from-amber-50/50 to-yellow-50/50 dark:from-amber-900/10 dark:to-yellow-900/10' :
+              index === 1 ? 'border-slate-400 dark:border-slate-500' :
+              index === 2 ? 'border-orange-400 dark:border-orange-500' : ''
+            }`}
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="text-5xl">{user.avatar}</div>
+                {index < 3 && (
+                  <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                    index === 0 ? 'bg-amber-500' : index === 1 ? 'bg-slate-400' : 'bg-orange-400'
+                  }`}>
+                    {index + 1}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-bold text-xl text-slate-900 dark:text-white">{user.name}</h3>
+                  {user.verified && <CheckCircle size={18} className="text-blue-500 fill-current" />}
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {user.badges && user.badges.split(',').slice(0, 2).map(badge => <Badge key={badge} name={badge.trim()} />)}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">This Week</p>
+                    <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{user.linesPickedWeek}</p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Avg Speed</p>
+                    <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{user.avgSpeed}/hr</p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Streak</p>
+                    <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{user.streak} days</p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Achievements</p>
+                    <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{user.achievements}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     );
   };
 
@@ -1315,7 +1537,7 @@ const EdgeApp = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 autoFocus
-                className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl pl-12 pr-4 py-4 border-2 border-transparent focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all"
+                className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl pl-12 pr-4 py-4 border-2 border-transparent focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
               />
             </div>
           </div>
@@ -1347,7 +1569,7 @@ const EdgeApp = () => {
                       e.stopPropagation();
                       startConversation(user);
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-xl font-semibold text-sm hover:shadow-lg active:scale-95 transition-all"
+                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold text-sm hover:shadow-lg active:scale-95 transition-all"
                   >
                     Message
                   </button>
@@ -1364,7 +1586,7 @@ const EdgeApp = () => {
     const userPosts = posts.filter(p => p.userId === user.id);
 
     return (
-      <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
+      <div className="fixed inset-0bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
           <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-4">
@@ -1376,7 +1598,7 @@ const EdgeApp = () => {
             </div>
             <button 
               onClick={() => startConversation(user)}
-              className="px-5 py-2.5 bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center gap-2"
+              className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center gap-2"
             >
               <MessageCircle size={18} />
               <span>Message</span>
@@ -1407,7 +1629,7 @@ const EdgeApp = () => {
           <div className="p-4 space-y-4">
             {userPosts.map((post, index) => (
               <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onBookmark={handleBookmark} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
+                <PostCard post={post} isAuthenticated={isAuthenticated} onGuestAction={handleGuestAction} onLike={handleLike} onNextImage={nextImage} onPrevImage={prevImage} onToggleComments={toggleComments} onCommentSubmit={handleCommentSubmit} onEdit={handleEditPost} onDelete={handleDeletePost} highlighted={highlightedPost === post.id}/>
               </div>
             ))}
             {userPosts.length === 0 && (
@@ -1446,7 +1668,7 @@ const EdgeApp = () => {
             </div>
             <button 
               onClick={() => setShowUserSearch(true)}
-              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+              className="w-full px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
             >
               <Plus size={20} />
               <span>New Message</span>
@@ -1537,7 +1759,7 @@ const EdgeApp = () => {
                     >
                       <div className={`max-w-xs lg:max-w-md ${
                         isOwnMessage 
-                          ? 'bg-gradient-to-br from-slate-900 to-slate-700 text-white' 
+                          ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white' 
                           : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700'
                       } rounded-3xl px-5 py-3 shadow-sm`}>
                         {msg.type === 'image' && msg.imageUrl ? (
@@ -1545,7 +1767,7 @@ const EdgeApp = () => {
                         ) : (
                           <p className="leading-relaxed">{msg.text}</p>
                         )}
-                        <p className={`text-xs mt-2 ${isOwnMessage ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                        <p className={`text-xs mt-2 ${isOwnMessage ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>
                           {formatTimestamp(msg.timestamp)}
                         </p>
                       </div>
@@ -1572,7 +1794,7 @@ const EdgeApp = () => {
                     }
                   }}
                   placeholder="Type a message..."
-                  className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-5 py-3 border-2 border-transparent focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all"
+                  className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-5 py-3 border-2 border-transparent focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
                 />
                 <button
                   onClick={() => {
@@ -1582,7 +1804,7 @@ const EdgeApp = () => {
                     }
                   }}
                   disabled={!messageText.trim()}
-                  className="px-5 py-3 bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-2xl hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send size={20} />
                 </button>
@@ -1604,285 +1826,90 @@ const EdgeApp = () => {
     );
   };
 
-  const PostCard = React.memo(({ post, isAuthenticated, onGuestAction, onLike, onBookmark, onNextImage, onPrevImage, onToggleComments, onCommentSubmit, onEdit, onDelete, highlighted }) => {
-    const currentIndex = currentImageIndex[post.id] || 0;
-    const isCommentsExpanded = expandedComments === post.id;
-    const cardColorClass = post.featured ? 'bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20' : 'bg-white dark:bg-slate-800/50';
-    const [showActions, setShowActions] = useState(false);
-    const [commentText, setCommentText] = useState('');
-    const [commentMentionSuggestions, setCommentMentionSuggestions] = useState([]);
-    const cardRef = useRef(null);
-
+  const GroupChatPage = () => {
     useEffect(() => {
-        if (highlighted && cardRef.current) {
-            cardRef.current.classList.add('highlight');
-            setTimeout(() => {
-                cardRef.current?.classList.remove('highlight');
-            }, 2000);
-        }
-    }, [highlighted]);
-
-    const handleCommentChange = (e) => {
-      const value = e.target.value;
-      setCommentText(value);
-      
-      const lastWord = value.split(' ').pop();
-      if (lastWord.startsWith('@') && lastWord.length > 1) {
-        const query = lastWord.slice(1).toLowerCase();
-        const suggestions = allUsers.filter(user => 
-          user.username.toLowerCase().includes(query) || 
-          user.name.toLowerCase().includes(query)
-        ).slice(0, 5);
-        setCommentMentionSuggestions(suggestions);
-      } else {
-        setCommentMentionSuggestions([]);
+      if (groupChatScrollRef.current) {
+        groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
       }
-    };
-
-    const insertCommentMention = (username) => {
-      const words = commentText.split(' ');
-      words[words.length - 1] = username + ' ';
-      setCommentText(words.join(' '));
-      setCommentMentionSuggestions([]);
-    };
-
-    const handleComment = () => {
-        onCommentSubmit(post.id, commentText);
-        setCommentText('');
-        setCommentMentionSuggestions([]);
-    }
-
-    const isOwnPost = isAuthenticated && currentUser?.username === post.user?.username;
+    }, [groupMessages]);
 
     return (
-        <div id={`post-${post.id}`} ref={cardRef} className={`${cardColorClass} rounded-3xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 ease-out group relative overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1`}>
-            {post.featured && (
-                <div className="absolute top-0 right-0 px-4 py-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-bl-3xl rounded-tr-2xl flex items-center gap-2 z-10 shadow-lg animate-slide-in-right">
-                    <Star size={14} className="text-white fill-current animate-spin-slow" />
-                    <span className="text-xs text-white font-bold tracking-wide">FEATURED</span>
-                </div>
-            )}
-            <div className="p-6">
-                <div className="flex items-start gap-4 mb-4">
-                    <button 
-                      onClick={() => {
-                        const user = allUsers.find(u => u.username === post.user?.username);
-                        if (user) {
-                          if (isAuthenticated && user.username === currentUser?.username) {
-                            setShowProfilePage(true);
-                          } else {
-                            setViewingUser(user);
-                          }
-                        }
-                      }}
-                      className="text-4xl hover:scale-110 active:scale-95 transition-transform animate-bounce-in"
-                    >
-                      {typeof post.user?.avatar === 'string' && post.user.avatar.startsWith('data:') ? 
-                        <img src={post.user.avatar} alt="Avatar" className="w-12 h-12 rounded-full object-cover" /> :
-                        post.user?.avatar
-                      }
-                    </button>
-                    <div className="flex-1 min-w-0">
-                        <button 
-                          onClick={() => {
-                            const user = allUsers.find(u => u.username === post.user?.username);
-                            if (user) {
-                              if (isAuthenticated && user.username === currentUser?.username) {
-                                setShowProfilePage(true);
-                              } else {
-                                setViewingUser(user);
-                              }
-                            }
-                          }}
-                          className="flex items-center gap-2 flex-wrap mb-1 text-left hover:opacity-80 transition-opacity"
-                        >
-                            <span className="font-bold text-slate-900 dark:text-white text-base truncate">{post.user?.name}</span>
-                            {post.user?.verified && <CheckCircle size={18} className="text-blue-500 fill-current flex-shrink-0 animate-scale-in" />}
-                            <span className="text-slate-500 dark:text-slate-400 text-sm">· {formatTimestamp(post.timestamp)}</span>
-                        </button>
-                        <div className="flex items-center flex-wrap gap-2 mt-2">
-                           {post.user?.badges && post.user.badges.split(',').map(badge => <Badge key={badge} name={badge.trim()} />)}
-                        </div>
-                    </div>
-                    {isOwnPost && (
-                        <div className="relative">
-                            <button type="button" onClick={() => setShowActions(!showActions)} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95">
-                                <MoreVertical size={20} />
-                            </button>
-                             {showActions && (
-                                <div className="absolute right-0 top-12 w-48 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl z-20 overflow-hidden animate-slide-down">
-                                    <button onClick={() => { onEdit(post); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-95 transition-all"><Edit2 size={18}/> Edit Post</button>
-                                    <button onClick={() => { onDelete(post.id); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all border-t border-slate-100 dark:border-slate-700"><Trash2 size={18}/> Delete Post</button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {post.title && <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3 animate-slide-in-left">{post.title}</h3>}
-                
-                <p className="text-slate-700 dark:text-slate-300 text-base leading-relaxed mb-4 whitespace-pre-wrap break-words animate-slide-in-up">
-                    {post.content && post.content.split(' ').map((word, i) => {
-                        if (word.startsWith('@')) {
-                            return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">{word} </span>;
-                        }
-                        return word + ' ';
-                    })}
-                </p>
-
-                {Array.isArray(post.images) && post.images.length > 0 && (
-                    <div className="relative mb-4 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-700 group/image animate-scale-in">
-                        <div className="aspect-video flex items-center justify-center">
-                            <img src={post.images[currentIndex]} alt="" className="w-full h-full object-cover" />
-                        </div>
-                        {post.images.length > 1 && (
-                            <>
-                                <button onClick={() => onPrevImage(post.id)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
-                                    <ChevronLeft size={24} />
-                                </button>
-                                <button onClick={() => onNextImage(post.id)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
-                                    <ChevronRight size={24} />
-                                </button>
-                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-                                    {post.images.map((_, idx) => (
-                                        <div key={idx} className={`w-2 h-2 rounded-full transition-all ${idx === currentIndex ? 'bg-white w-6' : 'bg-white/50'}`} />
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
-
-                {post.type === 'service' && (
-                    <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-200 dark:border-slate-600 animate-slide-in-up">
-                        <div className="flex items-center justify-between flex-wrap gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="px-4 py-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-600">
-                                    <p className="text-2xl font-bold text-slate-900 dark:text-white">${post.price}</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{post.priceType || 'per hour'}</p>
-                                </div>
-                                {post.category && (
-                                    <span className="px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-sm font-semibold border border-indigo-200 dark:border-indigo-500/30">
-                                        {post.category}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {post.type === 'item' && (
-                    <div className="mb-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-200 dark:border-slate-600 animate-slide-in-up">
-                        <div className="flex items-center justify-between flex-wrap gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="px-5 py-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl border-2 border-emerald-200 dark:border-emerald-500/30">
-                                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">${post.price}</p>
-                                </div>
-                                {post.condition && (
-                                    <span className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-sm font-semibold border border-blue-200 dark:border-blue-500/30">
-                                        {post.condition}
-                                    </span>
-                                )}
-                            </div>
-                            {post.location && (
-                                <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">📍 {post.location}</p>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <div className="flex items-center gap-1">
-                        <button onClick={() => isAuthenticated ? onLike(post.id) : onGuestAction()} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all active:scale-95 group/like ${post.liked ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                            <Heart size={20} className={`transition-all ${post.liked ? 'fill-current animate-heart-beat' : 'group-hover/like:scale-110'}`} />
-                            <span className="font-bold text-sm">{post.likes || 0}</span>
-                        </button>
-                        <button onClick={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} className="flex items-center gap-2 px-4 py-2.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
-                            <MessageCircle size={20} />
-                            <span className="font-bold text-sm">{post.commentsList?.length || 0}</span>
-                        </button>
-                    </div>
-                    <button onClick={() => isAuthenticated ? onBookmark(post.id) : onGuestAction()} className={`p-2.5 rounded-full transition-all active:scale-95 ${post.bookmarked ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                        <Bookmark size={20} className={post.bookmarked ? 'fill-current' : ''} />
-                    </button>
-                </div>
-
-                {isCommentsExpanded && isAuthenticated && (
-                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4 animate-slide-down">
-                        <div className="relative">
-                            <div className="flex gap-3">
-                                <div className="text-2xl">{currentUser?.avatar}</div>
-                                <div className="flex-1 relative">
-                                    <textarea
-                                        value={commentText}
-                                        onChange={handleCommentChange}
-                                        onKeyPress={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
-                                                e.preventDefault();
-                                                handleComment();
-                                            }
-                                        }}
-                                        placeholder="Add a comment... (use @ to mention)"
-                                        rows={2}
-                                        className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 border-2 border-slate-200 dark:border-slate-600 focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all resize-none text-sm"
-                                    />
-                                    {commentMentionSuggestions.length > 0 && (
-                                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-slide-down z-10">
-                                            {commentMentionSuggestions.map((user, index) => (
-                                                <button
-                                                    key={user.id}
-                                                    onClick={() => insertCommentMention(user.username)}
-                                                    className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left"
-                                                >
-                                                    <div className="text-xl">{user.avatar}</div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-slate-900 dark:text-white truncate text-xs">{user.name}</p>
-                                                        <p className="text-slate-500 dark:text-slate-400 text-xs truncate">{user.username}</p>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={handleComment}
-                                    disabled={!commentText.trim()}
-                                    className="self-end px-4 py-3 bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-xl hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Send size={18} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {post.commentsList && post.commentsList.length > 0 && (
-                            <div className="space-y-3">
-                                {post.commentsList.map((comment, idx) => (
-                                    <div key={idx} className="flex gap-3 animate-slide-in-up" style={{ animationDelay: `${idx * 50}ms` }}>
-                                        <div className="text-2xl">{comment.user?.avatar}</div>
-                                        <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-2xl px-4 py-3">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-bold text-slate-900 dark:text-white text-sm">{comment.user?.name}</span>
-                                                <span className="text-slate-500 dark:text-slate-400 text-xs">· {formatTimestamp(comment.timestamp)}</span>
-                                            </div>
-                                            <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                                {comment.text.split(' ').map((word, i) => {
-                                                    if (word.startsWith('@')) {
-                                                        return <span key={i} className="text-indigo-600 dark:text-indigo-400 font-semibold">{word} </span>;
-                                                    }
-                                                    return word + ' ';
-                                                })}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+      <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-50 flex flex-col animate-fade-in">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-900 flex items-center gap-4">
+          <button onClick={() => setShowGroupChat(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-white/50 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all">
+            <X size={22}/>
+          </button>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Team Chat</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{allUsers.length} team members</p>
+          </div>
         </div>
+
+        <div ref={groupChatScrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50 dark:bg-slate-900">
+          {groupMessages.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="text-6xl mb-4">👋</div>
+                <p className="text-slate-500 dark:text-slate-400 font-medium">Say hello to the team!</p>
+              </div>
+            </div>
+          ) : (
+            groupMessages.map((msg, index) => {
+              const isOwnMessage = msg.userId === currentUser?.id;
+              return (
+                <div 
+                  key={index} 
+                  className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} animate-slide-in-up`}
+                  style={{ animationDelay: `${index * 30}ms` }}
+                >
+                  {!isOwnMessage && (
+                    <div className="text-3xl mr-3">{msg.user?.avatar}</div>
+                  )}
+                  <div className={`max-w-xs lg:max-w-md ${
+                    isOwnMessage 
+                      ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white' 
+                      : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700'
+                  } rounded-3xl px-5 py-3 shadow-sm`}>
+                    {!isOwnMessage && (
+                      <p className="font-bold text-xs mb-1 opacity-70">{msg.user?.name}</p>
+                    )}
+                    <p className="leading-relaxed">{msg.text}</p>
+                    <p className={`text-xs mt-1 ${isOwnMessage ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {formatTimestamp(msg.timestamp)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={groupChatMessage}
+              onChange={(e) => setGroupChatMessage(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && groupChatMessage.trim()) {
+                  handleSendGroupMessage();
+                }
+              }}
+              placeholder="Message the team..."
+              className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-5 py-3 border-2 border-transparent focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
+            />
+            <button
+              onClick={handleSendGroupMessage}
+              disabled={!groupChatMessage.trim()}
+              className="px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send size={20} />
+            </button>
+          </div>
+        </div>
+      </div>
     );
-  });
+  };
 
   return (
     <div className="h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden flex flex-col">
@@ -1890,7 +1917,6 @@ const EdgeApp = () => {
         @keyframes shimmer { to { transform: translateX(100%); } }
         @keyframes gradient { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
         @keyframes heart-beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
-        @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slide-in-left { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes slide-in-right { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
@@ -1903,7 +1929,6 @@ const EdgeApp = () => {
         .animate-shimmer { animation: shimmer 2s infinite; }
         .animate-gradient { background-size: 200% 200%; animation: gradient 15s ease infinite; }
         .animate-heart-beat { animation: heart-beat 0.3s ease; }
-        .animate-spin-slow { animation: spin-slow 3s linear infinite; }
         .animate-fade-in { animation: fade-in 0.3s ease; }
         .animate-slide-in-left { animation: slide-in-left 0.4s ease; }
         .animate-slide-in-right { animation: slide-in-right 0.4s ease; }
@@ -1926,7 +1951,7 @@ const EdgeApp = () => {
       <header className={`bg-white dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 backdrop-blur-xl transition-transform duration-300 z-40 ${headerVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-slate-900 to-slate-700 rounded-xl flex items-center justify-center shadow-lg animate-bounce-in">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg animate-bounce-in">
               <Zap size={20} className="text-white" />
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Edge</h1>
@@ -1936,10 +1961,10 @@ const EdgeApp = () => {
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500" size={20} />
             <input
               type="text"
-              placeholder="Search posts, services, items..."
+              placeholder="Search posts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl pl-12 pr-4 py-3 border-2 border-transparent focus:border-slate-900 dark:focus:border-white focus:ring-0 focus:outline-none transition-all"
+              className="w-full bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl pl-12 pr-4 py-3 border-2 border-transparent focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
             />
           </div>
 
@@ -2028,65 +2053,85 @@ const EdgeApp = () => {
               <SkeletonCard />
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredAndSortedPosts.map((post, index) => (
-                <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
-                  <PostCard 
-                    post={post} 
-                    isAuthenticated={isAuthenticated}
-                    onGuestAction={handleGuestAction}
-                    onLike={handleLike} 
-                    onBookmark={handleBookmark} 
-                    onNextImage={nextImage} 
-                    onPrevImage={prevImage} 
-                    onToggleComments={toggleComments} 
-                    onCommentSubmit={handleCommentSubmit}
-                    onEdit={handleEditPost}
-                    onDelete={handleDeletePost}
-                    highlighted={highlightedPost === post.id}
-                  />
-                </div>
-              ))}
-              {filteredAndSortedPosts.length === 0 && (
-                <div className="text-center py-16 animate-fade-in">
-                  <div className="text-7xl mb-4">🔭</div>
-                  <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">No posts yet</h3>
-                  <p className="text-slate-600 dark:text-slate-400">Be the first to share something!</p>
+            <>
+              {activeTab === 'feed' && (
+                <div className="space-y-4">
+                  {filteredAndSortedPosts.map((post, index) => (
+                    <div key={post.id} style={{ animationDelay: `${index * 100}ms` }} className="animate-slide-in-up">
+                      <PostCard 
+                        post={post} 
+                        isAuthenticated={isAuthenticated}
+                        onGuestAction={handleGuestAction}
+                        onLike={handleLike} 
+                        onNextImage={nextImage} 
+                        onPrevImage={prevImage} 
+                        onToggleComments={toggleComments} 
+                        onCommentSubmit={handleCommentSubmit}
+                        onEdit={handleEditPost}
+                        onDelete={handleDeletePost}
+                        highlighted={highlightedPost === post.id}
+                      />
+                    </div>
+                  ))}
+                  {filteredAndSortedPosts.length === 0 && (
+                    <div className="text-center py-16 animate-fade-in">
+                      <div className="text-7xl mb-4">📭</div>
+                      <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">No posts yet</h3>
+                      <p className="text-slate-600 dark:text-slate-400">Be the first to share something!</p>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+
+              {activeTab === 'groupchat' && (
+                <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700 p-8 text-center animate-fade-in">
+                  <div className="text-7xl mb-4">💬</div>
+                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Team Chat</h3>
+                  <p className="text-slate-600 dark:text-slate-400 mb-6">Connect with your warehouse team</p>
+                  <button 
+                    onClick={() => isAuthenticated ? setShowGroupChat(true) : handleGuestAction()}
+                    className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-105 active:scale-95 transition-all"
+                  >
+                    Open Team Chat
+                  </button>
+                </div>
+              )}
+
+              {activeTab === 'leaderboard' && <LeaderboardPage />}
+            </>
           )}
         </div>
       </div>
 
-      <nav className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-4 py-3 flex justify-around items-center">
-        <button onClick={() => setActiveTab('foryou')} className={`flex flex-col items-center gap-1 px-6 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'foryou' ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-          <Home size={24} className={activeTab === 'foryou' ? 'fill-current' : ''} />
-          <span className="text-xs font-semibold">Home</span>
+      <nav className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-2 py-2 flex justify-around items-center">
+        <button onClick={() => setActiveTab('feed')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'feed' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
+          <Home size={22} className={activeTab === 'feed' ? 'fill-current' : ''} />
+          <span className="text-xs font-semibold">Feed</span>
         </button>
-        <button onClick={() => setActiveTab('services')} className={`flex flex-col items-center gap-1 px-6 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'services' ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-          <Briefcase size={24} className={activeTab === 'services' ? 'fill-current' : ''} />
-          <span className="text-xs font-semibold">Services</span>
+        <button onClick={() => setActiveTab('groupchat')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'groupchat' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
+          <Users size={22} className={activeTab === 'groupchat' ? 'fill-current' : ''} />
+          <span className="text-xs font-semibold">Chat</span>
         </button>
-        <button onClick={() => isAuthenticated ? setShowCreateModal(true) : handleGuestAction()} className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 text-white rounded-full flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-110 active:scale-95 transition-all -mt-8">
-          <Plus size={28} strokeWidth={3} />
+        <button onClick={() => isAuthenticated ? setShowCreateModal(true) : handleGuestAction()} className="relative -mt-6 w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-110 active:scale-95 transition-all">
+          <Plus size={32} strokeWidth={3} />
         </button>
-        <button onClick={() => setActiveTab('marketplace')} className={`flex flex-col items-center gap-1 px-6 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'marketplace' ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-          <ShoppingBag size={24} className={activeTab === 'marketplace' ? 'fill-current' : ''} />
-          <span className="text-xs font-semibold">Items</span>
+        <button onClick={() => setActiveTab('leaderboard')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'leaderboard' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
+          <Trophy size={22} className={activeTab === 'leaderboard' ? 'fill-current' : ''} />
+          <span className="text-xs font-semibold">Leaders</span>
         </button>
-        <button onClick={() => isAuthenticated ? setShowProfilePage(true) : handleGuestAction()} className="flex flex-col items-center gap-1 px-6 py-2 rounded-2xl transition-all active:scale-95 text-slate-500 dark:text-slate-400">
-          <User size={24} />
+        <button onClick={() => isAuthenticated ? setShowProfilePage(true) : handleGuestAction()} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${showProfilePage ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
+          <User size={22} />
           <span className="text-xs font-semibold">Profile</span>
         </button>
       </nav>
 
       {showAuthModal && <AuthModal onLogin={handleLogin} onSignup={handleSignup} onClose={() => setShowAuthModal(false)} />}
-      {showCreateModal && <CreateModal onPost={handlePostSubmit} postToEdit={editingPost} onClose={() => { setShowCreateModal(false); setEditingPost(null); }} categories={categories} />}
+      {showCreateModal && <CreateModal onPost={handlePostSubmit} postToEdit={editingPost} onClose={() => { setShowCreateModal(false); setEditingPost(null); }} />}
       {showDeleteConfirm && <ConfirmationModal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} onConfirm={confirmDelete} title="Delete Post?" message="This action cannot be undone." />}
       {showProfilePage && currentUser && <ProfilePage />}
       {showSettingsPage && isAuthenticated && <SettingsPage />}
       {showMessagesPage && isAuthenticated && <MessagesPage />}
+      {showGroupChat && isAuthenticated && <GroupChatPage />}
       {showUserSearch && isAuthenticated && <UserSearchModal />}
       {viewingUser && <UserProfileView user={viewingUser} />}
 
