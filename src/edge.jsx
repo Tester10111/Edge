@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageCircle, Heart, Plus, Search, Home, User, X, Send, MoreVertical, Image as ImageIcon, CheckCircle, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, Users, Calendar, Camera, Loader, Zap } from 'lucide-react';
+import { MessageCircle, Heart, Plus, Search, Home, User, X, Send, MoreVertical, Image as ImageIcon, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, Users, Calendar, Camera, Loader } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 
 const SCRIPT_URL = '/api';
@@ -1025,7 +1025,7 @@ const EdgeApp = () => {
                 className="flex items-center gap-2 flex-wrap mb-1 text-left hover:opacity-80 transition-opacity"
               >
                 <span className="font-bold text-slate-900 dark:text-white text-base truncate">{post.user?.name}</span>
-                {post.user?.verified && <img src="verify.png" alt="Verified" className="w-5 h-5 flex-shrink-0 animate-scale-in" />}
+                {post.user?.verified && <img src="public\verify.png" alt="Verified" className="w-5 h-5 flex-shrink-0 animate-scale-in" />}
                 <span className="text-slate-500 dark:text-slate-400 text-sm">· {formatTimestamp(post.timestamp)}</span>
               </button>
               <div className="flex items-center flex-wrap gap-2 mt-2">
@@ -1842,10 +1842,10 @@ const EdgeApp = () => {
       <header className={`bg-white dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 backdrop-blur-xl transition-transform duration-300 z-40 ${headerVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg animate-bounce-in">
-              <Zap size={20} className="text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Edge</h1>
+            
+              <img src="logo.png" alt="Edge Logo" className="w-10 h-10" />
+            
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Realm</h1>
           </div>
 
           <div className="flex-1 max-w-xl mx-8 relative hidden md:block">
