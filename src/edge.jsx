@@ -1025,7 +1025,7 @@ const EdgeApp = () => {
                 className="flex items-center gap-2 flex-wrap mb-1 text-left hover:opacity-80 transition-opacity"
               >
                 <span className="font-bold text-slate-900 dark:text-white text-base truncate">{post.user?.name}</span>
-                {post.user?.verified && <img src="public\verify.png" alt="Verified" className="w-5 h-5 flex-shrink-0 animate-scale-in" />}
+                {post.user?.verified && <img src="verify.png" alt="Verified" className="w-5 h-5 flex-shrink-0 animate-scale-in" />}
                 <span className="text-slate-500 dark:text-slate-400 text-sm">· {formatTimestamp(post.timestamp)}</span>
               </button>
               <div className="flex items-center flex-wrap gap-2 mt-2">
