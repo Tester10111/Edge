@@ -1951,9 +1951,9 @@ const EdgeApp = () => {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             
-              <img src="logo.png" alt="Edge Logo" className="w-10 h-10" />
+              <img src="logo10.png" alt="Edge Logo" className="w-10 h-10" />
             
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Realm</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">WUPHF</h1>
           </div>
 
           <div className="flex-1 max-w-xl mx-8 relative hidden md:block">
