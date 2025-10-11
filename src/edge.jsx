@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageCircle, Heart, Plus, Search, Home, User, X, Send, MoreVertical, Image as ImageIcon, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, Users, Calendar, Camera, Loader } from 'lucide-react';
+import { MessageCircle, Heart, Plus, Search, Home, User, X, Send, MoreVertical, Image as ImageIcon, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, Users, Calendar, Camera, Loader, RefreshCw, Moon, Sun } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 
 const SCRIPT_URL = '/api';
@@ -45,7 +45,6 @@ const apiRequest = async (method, path, data = null, id = null) => {
     throw error;
   }
 };
-
 
 const uploadImage = async (blob, type) => {
   const dataURL = await toBase64(blob);
@@ -504,7 +503,11 @@ const EdgeApp = () => {
         }
       }
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("touchstart", handleClickOutside);
+      };
     }, [ref, action]);
   }
 
@@ -1034,13 +1037,13 @@ const EdgeApp = () => {
             </div>
             {isOwnPost && (
               <div className="relative">
-                <button type="button" onClick={() => setShowActions(!showActions)} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95">
+                <button type="button" onClick={() => setShowActions(!showActions)} onTouchStart={() => setShowActions(!showActions)} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-95">
                   <MoreVertical size={20} />
                 </button>
                 {showActions && (
                   <div className="absolute right-0 top-12 w-48 bg-white dark:bg-slate-800 rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-2xl z-20 overflow-hidden animate-slide-down">
-                    <button onClick={() => { onEdit(post); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-95 transition-all"><Edit2 size={18}/> Edit Post</button>
-                    <button onClick={() => { onDelete(post.id); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all border-t border-slate-100 dark:border-slate-700"><Trash2 size={18}/> Delete Post</button>
+                    <button onClick={() => { onEdit(post); setShowActions(false); }} onTouchStart={() => { onEdit(post); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:scale-95 transition-all"><Edit2 size={18}/> Edit Post</button>
+                    <button onClick={() => { onDelete(post.id); setShowActions(false); }} onTouchStart={() => { onDelete(post.id); setShowActions(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-base font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-95 transition-all border-t border-slate-100 dark:border-slate-700"><Trash2 size={18}/> Delete Post</button>
                   </div>
                 )}
               </div>
@@ -1063,10 +1066,10 @@ const EdgeApp = () => {
               </div>
               {post.images.length > 1 && (
                 <>
-                  <button onClick={() => onPrevImage(post.id)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
+                  <button onClick={() => onPrevImage(post.id)} onTouchStart={() => onPrevImage(post.id)} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
                     <ChevronLeft size={24} />
                   </button>
-                  <button onClick={() => onNextImage(post.id)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
+                  <button onClick={() => onNextImage(post.id)} onTouchStart={() => onNextImage(post.id)} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all active:scale-95 backdrop-blur-sm">
                     <ChevronRight size={24} />
                   </button>
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
@@ -1081,11 +1084,11 @@ const EdgeApp = () => {
 
           <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-1">
-              <button onClick={() => isAuthenticated ? onLike(post.id) : onGuestAction()} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all active:scale-95 group/like ${post.liked ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
+              <button onClick={() => isAuthenticated ? onLike(post.id) : onGuestAction()} onTouchStart={() => isAuthenticated ? onLike(post.id) : onGuestAction()} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all active:scale-95 group/like ${post.liked ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}>
                 <Heart size={20} className={`transition-all ${post.liked ? 'fill-current animate-heart-beat' : 'group-hover/like:scale-110'}`} />
                 <span className="font-bold text-sm">{post.likes || 0}</span>
               </button>
-              <button onClick={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} className="flex items-center gap-2 px-4 py-2.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
+              <button onClick={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} onTouchStart={() => isAuthenticated ? onToggleComments(post.id) : onGuestAction()} className="flex items-center gap-2 px-4 py-2.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
                 <MessageCircle size={20} />
                 <span className="font-bold text-sm">{post.commentsList?.length || 0}</span>
               </button>
@@ -1106,12 +1109,6 @@ const EdgeApp = () => {
                     <textarea
                       value={commentText}
                       onChange={handleCommentChange}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
-                          e.preventDefault();
-                          handleComment();
-                        }
-                      }}
                       placeholder="Add a comment... (use @ to mention)"
                       rows={2}
                       className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none text-sm"
@@ -1122,6 +1119,7 @@ const EdgeApp = () => {
                           <button
                             key={user.id}
                             onClick={() => insertCommentMention(user.username)}
+                            onTouchStart={() => insertCommentMention(user.username)}
                             className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-left"
                           >
                             <div className="text-xl">
@@ -1141,6 +1139,7 @@ const EdgeApp = () => {
                   </div>
                   <button
                     onClick={handleComment}
+                    onTouchStart={handleComment}
                     disabled={!commentText.trim()}
                     className="self-end px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1198,6 +1197,7 @@ const EdgeApp = () => {
             <button
               key={notif.id}
               onClick={() => handleNotificationClick(notif)}
+              onTouchStart={() => handleNotificationClick(notif)}
               className="w-full p-5 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all flex items-start gap-3 animate-slide-in-left"
               style={{ animationDelay: `${index * 50}ms` }}
             >
@@ -1256,12 +1256,12 @@ const EdgeApp = () => {
             onChange={(e) => setFormData({...formData, password: e.target.value})}
             className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-6 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all"
           />
-          <button onClick={handleSubmit} className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-xl active:scale-95 transition-all">
+          <button onClick={handleSubmit} onTouchStart={handleSubmit} className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-xl active:scale-95 transition-all">
             {isLogin ? 'Login' : 'Sign Up'}
           </button>
           <p className="text-center mt-4 text-slate-600 dark:text-slate-400">
             {isLogin ? "Don't have an account? " : "Already have an account? "}
-            <button onClick={() => setIsLogin(!isLogin)} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
+            <button onClick={() => setIsLogin(!isLogin)} onTouchStart={() => setIsLogin(!isLogin)} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
               {isLogin ? 'Sign Up' : 'Login'}
             </button>
           </p>
@@ -1282,16 +1282,21 @@ const EdgeApp = () => {
       if (file) {
         setUploading(true);
         try {
-          const compressed = await compressToBlob(file);
-          const url = await uploadImage(compressed, 'post');
-          setImages(prev => [...prev, url]);
+          const url = URL.createObjectURL(file);
+          setCropImage(url);
+          setCropType('post');
+          setOnCropCompleteCallback(() => async (croppedBlob) => {
+            const compressed = await compressToBlob(croppedBlob);
+            const uploadedUrl = await uploadImage(compressed, 'post');
+            setImages(prev => [...prev, uploadedUrl]);
+          });
         } catch (error) {
           showToast('Failed to upload image.', 'error');
         } finally {
           setUploading(false);
+          e.target.value = '';
         }
       }
-      e.target.value = '';
     };
 
     const handleSubmit = () => {
@@ -1329,7 +1334,7 @@ const EdgeApp = () => {
               {images.map((img, idx) => (
                 <div key={idx} className="relative">
                   <img src={img} alt="" className="w-full h-32 object-cover rounded-xl" />
-                  <button onClick={() => setImages(images.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1">
+                  <button onClick={() => setImages(images.filter((_, i) => i !== idx))} onTouchStart={() => setImages(images.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1">
                     <X size={12} />
                   </button>
                 </div>
@@ -1337,11 +1342,11 @@ const EdgeApp = () => {
             </div>
           )}
           <div className="flex justify-between items-center">
-            <button disabled={uploading} onClick={() => fileInputRef.current?.click()} className="p-3 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-full transition-all active:scale-95">
+            <button disabled={uploading} onClick={() => fileInputRef.current?.click()} onTouchStart={() => fileInputRef.current?.click()} className="p-3 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-full transition-all active:scale-95">
               <ImageIcon size={24} />
             </button>
             <input type="file" ref={fileInputRef} onChange={handleImage} accept="image/*" hidden />
-            <button onClick={handleSubmit} disabled={isPosting || uploading || (!content.trim() && images.length === 0)} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
+            <button onClick={handleSubmit} onTouchStart={handleSubmit} disabled={isPosting || uploading || (!content.trim() && images.length === 0)} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
               {isPosting ? <LoadingSpinner /> : (isEdit ? 'Update' : 'Post')}
             </button>
           </div>
@@ -1365,6 +1370,7 @@ const EdgeApp = () => {
           showToast('Failed to process image', 'error');
         }
       });
+      e.target.value = '';
     }
   };
 
@@ -1395,7 +1401,7 @@ const EdgeApp = () => {
       <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-[60] overflow-y-auto animate-fade-in no-scrollbar">
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
           <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center gap-4 border-b border-slate-200 dark:border-slate-700">
-            <button onClick={() => setShowSettingsPage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
+            <button onClick={() => setShowSettingsPage(false)} onTouchStart={() => setShowSettingsPage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
             <div>
               <h2 className="font-bold text-lg text-slate-900 dark:text-white">Settings</h2>
             </div>
@@ -1410,7 +1416,7 @@ const EdgeApp = () => {
                     {settings.darkMode ? <Moon className="text-indigo-400"/> : <Sun className="text-amber-500" /> }
                     <span className="font-medium text-slate-800 dark:text-slate-200">Dark Mode</span>
                   </div>
-                  <button onClick={() => handleSettingChange('darkMode', !settings.darkMode)} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.darkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
+                  <button onClick={() => handleSettingChange('darkMode', !settings.darkMode)} onTouchStart={() => handleSettingChange('darkMode', !settings.darkMode)} className={`w-14 h-8 rounded-full p-1 transition-colors flex items-center ${settings.darkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'}`}>
                     <span className="w-6 h-6 bg-white rounded-full shadow transition-transform"></span>
                   </button>
                 </div>
@@ -1447,7 +1453,7 @@ const EdgeApp = () => {
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
           <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-4">
-              <button onClick={() => setShowProfilePage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
+              <button onClick={() => setShowProfilePage(false)} onTouchStart={() => setShowProfilePage(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
               <div>
                 <h2 className="font-bold text-lg text-slate-900 dark:text-white">{currentUser.name}</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{userPosts.length} posts</p>
@@ -1455,13 +1461,13 @@ const EdgeApp = () => {
             </div>
             {isEditingProfile ? (
               <div className="flex gap-2">
-                <button onClick={cancelEdit} className="px-5 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all">Cancel</button>
-                <button onClick={handleSaveProfile} disabled={isSaving} className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50">
+                <button onClick={cancelEdit} onTouchStart={cancelEdit} className="px-5 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all">Cancel</button>
+                <button onClick={handleSaveProfile} onTouchStart={handleSaveProfile} disabled={isSaving} className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50">
                   {isSaving ? <LoadingSpinner/> : 'Save'}
                 </button>
               </div>
             ) : (
-              <button onClick={() => setIsEditingProfile(true)} className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all flex items-center gap-2">
+              <button onClick={() => setIsEditingProfile(true)} onTouchStart={() => setIsEditingProfile(true)} className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all flex items-center gap-2">
                 <Edit2 size={18}/>
                 <span>Edit Profile</span>
               </button>
@@ -1472,7 +1478,7 @@ const EdgeApp = () => {
             {isEditingProfile ? (
               <>
                 <input type="file" ref={coverImageInputRef} onChange={(e) => handleProfileImageUpload(e, 'cover')} accept="image/*" hidden />
-                <button onClick={() => coverImageInputRef.current?.click()} className="w-full h-full group">
+                <button onClick={() => coverImageInputRef.current?.click()} onTouchStart={() => coverImageInputRef.current?.click()} className="w-full h-full group">
                   {profileForm.coverImageURL ? (
                     <img src={profileForm.coverImageURL} alt="Cover" className="w-full h-full object-cover" />
                   ) : <div className="w-full h-full bg-slate-300 dark:bg-slate-700"></div> }
@@ -1490,7 +1496,7 @@ const EdgeApp = () => {
               {isEditingProfile ? (
                 <>
                   <input type="file" ref={profileImageInputRef} onChange={(e) => handleProfileImageUpload(e, 'profile')} accept="image/*" hidden />
-                  <button onClick={() => profileImageInputRef.current?.click()} className="w-full h-full group">
+                  <button onClick={() => profileImageInputRef.current?.click()} onTouchStart={() => profileImageInputRef.current?.click()} className="w-full h-full group">
                     {profileForm.profileImageURL ? (
                       <img src={profileForm.profileImageURL} alt="Profile" className="w-full h-full object-cover" />
                     ) : <span className="text-6xl">{profileForm.avatar}</span>}
@@ -1552,6 +1558,9 @@ const EdgeApp = () => {
   const DailyLogPage = () => {
     const [rating, setRating] = useState(3);
     const [feedback, setFeedback] = useState('');
+    const [productivity, setProductivity] = useState(3);
+    const [issues, setIssues] = useState('');
+    const [suggestions, setSuggestions] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const today = new Date().toISOString().split('T')[0];
@@ -1559,11 +1568,17 @@ const EdgeApp = () => {
 
     useEffect(() => {
       if (todaysLog) {
-        setRating(todaysLog.mood);
+        setRating(todaysLog.mood || 3);
         setFeedback(todaysLog.summary || '');
+        setProductivity(todaysLog.productivity || 3);
+        setIssues(todaysLog.issues || '');
+        setSuggestions(todaysLog.suggestions || '');
       } else {
         setRating(3);
         setFeedback('');
+        setProductivity(3);
+        setIssues('');
+        setSuggestions('');
       }
     }, [todaysLog]);
 
@@ -1571,12 +1586,20 @@ const EdgeApp = () => {
       if (!currentUser) return;
 
       setIsSubmitting(true);
-      const logData = { userId: currentUser.id, date: today, mood: rating, summary: feedback };
+      const logData = { 
+        userId: currentUser.id, 
+        date: today, 
+        mood: rating, 
+        summary: feedback, 
+        productivity,
+        issues,
+        suggestions
+      };
 
       try {
         if (todaysLog) {
           await apiRequest('PUT', 'dailylogs', logData, todaysLog.id);
-          setDailyLogs(prev => prev.map(l => l.id === todaysLog.id ? { ...l, mood: rating, summary: feedback } : l));
+          setDailyLogs(prev => prev.map(l => l.id === todaysLog.id ? { ...l, ...logData } : l));
         } else {
           const result = await apiRequest('POST', 'dailylogs', logData);
           const newLog = { ...logData, id: result.id || result.data?.id };
@@ -1603,7 +1626,23 @@ const EdgeApp = () => {
                 <button
                   key={r}
                   onClick={() => setRating(r)}
+                  onTouchStart={() => setRating(r)}
                   className={`text-3xl transition-transform hover:scale-110 ${r <= rating ? 'text-yellow-400' : 'text-slate-300 dark:text-slate-600'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mb-4">
+            <p className="text-slate-700 dark:text-slate-300 mb-2">Productivity Level</p>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4, 5].map(r => (
+                <button
+                  key={r}
+                  onClick={() => setProductivity(r)}
+                  onTouchStart={() => setProductivity(r)}
+                  className={`text-3xl transition-transform hover:scale-110 ${r <= productivity ? 'text-green-400' : 'text-slate-300 dark:text-slate-600'}`}
                 >
                   ★
                 </button>
@@ -1613,12 +1652,27 @@ const EdgeApp = () => {
           <textarea
             value={feedback}
             onChange={e => setFeedback(e.target.value)}
-            placeholder="Optional anonymous feedback..."
-            rows={4}
+            placeholder="Summary of the day..."
+            rows={3}
+            className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none"
+          />
+          <textarea
+            value={issues}
+            onChange={e => setIssues(e.target.value)}
+            placeholder="Any issues encountered?"
+            rows={3}
+            className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none"
+          />
+          <textarea
+            value={suggestions}
+            onChange={e => setSuggestions(e.target.value)}
+            placeholder="Suggestions for improvement?"
+            rows={3}
             className="w-full bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 mb-4 border-2 border-slate-200 dark:border-slate-600 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 focus:outline-none transition-all resize-none"
           />
           <button
             onClick={handleSubmitLog}
+            onTouchStart={handleSubmitLog}
             disabled={isSubmitting}
             className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
@@ -1643,10 +1697,19 @@ const EdgeApp = () => {
                   {new Date(log.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </p>
                 <p className="text-yellow-400 mb-2">
-                  {'★'.repeat(log.mood) + '☆'.repeat(5 - log.mood)}
+                  Mood: {'★'.repeat(log.mood) + '☆'.repeat(5 - log.mood)}
+                </p>
+                <p className="text-green-400 mb-2">
+                  Productivity: {'★'.repeat(log.productivity) + '☆'.repeat(5 - log.productivity)}
                 </p>
                 {log.summary && (
-                  <p className="text-slate-700 dark:text-slate-300">{log.summary}</p>
+                  <p className="text-slate-700 dark:text-slate-300 mb-2">Summary: {log.summary}</p>
+                )}
+                {log.issues && (
+                  <p className="text-slate-700 dark:text-slate-300 mb-2">Issues: {log.issues}</p>
+                )}
+                {log.suggestions && (
+                  <p className="text-slate-700 dark:text-slate-300">Suggestions: {log.suggestions}</p>
                 )}
               </div>
             ))
@@ -1664,7 +1727,7 @@ const EdgeApp = () => {
         <div className="max-w-4xl mx-auto pb-24 md:pb-8">
           <div className="p-4 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-4">
-              <button onClick={() => setViewingUser(null)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
+              <button onClick={() => setViewingUser(null)} onTouchStart={() => setViewingUser(null)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all"><X size={22}/></button>
               <div>
                 <h2 className="font-bold text-lg text-slate-900 dark:text-white">{user.name}</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{userPosts.length} posts</p>
@@ -1716,12 +1779,32 @@ const EdgeApp = () => {
 
   const GroupChatPage = () => {
     const [localGroupChatMessage, setLocalGroupChatMessage] = useState('');
+    const [isChatRefreshing, setIsChatRefreshing] = useState(false);
 
     useEffect(() => {
       if (groupChatScrollRef.current) {
         groupChatScrollRef.current.scrollTop = groupChatScrollRef.current.scrollHeight;
       }
     }, [groupMessages]);
+
+    const handleChatRefresh = async () => {
+      setIsChatRefreshing(true);
+      try {
+        const groupChatData = await apiRequest('GET', 'groupchat');
+        const enrichedGroupMessages = groupChatData
+          .map(msg => ({
+            ...msg,
+            user: allUsers.find(u => u.id === msg.senderId)
+          }))
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        setGroupMessages(enrichedGroupMessages);
+        showToast('Chat refreshed!');
+      } catch (error) {
+        showToast('Failed to refresh chat.', 'error');
+      } finally {
+        setIsChatRefreshing(false);
+      }
+    };
 
     const handleSendGroupMessage = async () => {
       if (!localGroupChatMessage.trim() || !currentUser) return;
@@ -1757,13 +1840,16 @@ const EdgeApp = () => {
     return (
       <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 z-50 flex flex-col animate-fade-in">
         <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-900 flex items-center gap-4">
-          <button onClick={() => setShowGroupChat(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-white/50 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all">
+          <button onClick={() => setShowGroupChat(false)} onTouchStart={() => setShowGroupChat(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-white/50 dark:hover:bg-slate-800 rounded-full active:scale-95 transition-all">
             <X size={22}/>
           </button>
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Team Chat</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">{allUsers.length} team members</p>
           </div>
+          <button onClick={handleChatRefresh} onTouchStart={handleChatRefresh} disabled={isChatRefreshing} className="ml-auto p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all">
+            {isChatRefreshing ? <LoadingSpinner /> : <RefreshCw size={22} />}
+          </button>
         </div>
 
         <div ref={groupChatScrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50 dark:bg-slate-900">
@@ -1826,6 +1912,7 @@ const EdgeApp = () => {
             />
             <button
               onClick={handleSendGroupMessage}
+              onTouchStart={handleSendGroupMessage}
               disabled={!localGroupChatMessage.trim()}
               className="px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1860,9 +1947,18 @@ const EdgeApp = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              onTouchStart={handleRefresh}
+              disabled={isRefreshing}
+              className="p-3 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all active:scale-95"
+            >
+              {isRefreshing ? <LoadingSpinner /> : <RefreshCw size={22} />}
+            </button>
             <div className="relative">
               <button
                 onClick={() => isAuthenticated ? setShowNotifications(!showNotifications) : handleGuestAction()}
+                onTouchStart={() => isAuthenticated ? setShowNotifications(!showNotifications) : handleGuestAction()}
                 className="relative p-3 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all active:scale-95"
               >
                 <Bell size={22} />
@@ -1877,6 +1973,7 @@ const EdgeApp = () => {
             <div className="relative">
               <button
                 onClick={() => isAuthenticated ? setShowProfileMenu(!showProfileMenu) : handleGuestAction()}
+                onTouchStart={() => isAuthenticated ? setShowProfileMenu(!showProfileMenu) : handleGuestAction()}
                 className="text-3xl hover:scale-110 active:scale-95 transition-transform"
               >
                 {isAuthenticated && currentUser ? (
@@ -1902,15 +1999,15 @@ const EdgeApp = () => {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => { setShowProfilePage(true); setShowProfileMenu(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-95">
+                  <button onClick={() => { setShowProfilePage(true); setShowProfileMenu(false); }} onTouchStart={() => { setShowProfilePage(true); setShowProfileMenu(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-95">
                     <User size={20} />
                     <span className="font-medium">Profile</span>
                   </button>
-                  <button onClick={() => { setShowSettingsPage(true); setShowProfileMenu(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-95 border-t border-slate-100 dark:border-slate-700">
+                  <button onClick={() => { setShowSettingsPage(true); setShowProfileMenu(false); }} onTouchStart={() => { setShowSettingsPage(true); setShowProfileMenu(false); }} className="w-full flex items-center gap-3 px-5 py-4 text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-95 border-t border-slate-100 dark:border-slate-700">
                     <Settings size={20} />
                     <span className="font-medium">Settings</span>
                   </button>
-                  <button onClick={handleLogout} className="w-full flex items-center gap-3 px-5 py-4 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-95 border-t border-slate-100 dark:border-slate-700">
+                  <button onClick={handleLogout} onTouchStart={handleLogout} className="w-full flex items-center gap-3 px-5 py-4 text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-95 border-t border-slate-100 dark:border-slate-700">
                     <LogOut size={20} />
                     <span className="font-medium">Logout</span>
                   </button>
@@ -1972,6 +2069,7 @@ const EdgeApp = () => {
                   <p className="text-slate-600 dark:text-slate-400 mb-6">Connect with your warehouse team</p>
                   <button
                     onClick={() => isAuthenticated ? setShowGroupChat(true) : handleGuestAction()}
+                    onTouchStart={() => isAuthenticated ? setShowGroupChat(true) : handleGuestAction()}
                     className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-2xl hover:scale-105 active:scale-95 transition-all"
                   >
                     Open Team Chat
@@ -1986,22 +2084,22 @@ const EdgeApp = () => {
       </div>
 
       <nav className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-2 py-2 flex justify-around items-center">
-        <button onClick={() => setActiveTab('feed')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'feed' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
+        <button onClick={() => setActiveTab('feed')} onTouchStart={() => setActiveTab('feed')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'feed' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
           <Home size={22} className={activeTab === 'feed' ? 'fill-current' : ''} />
           <span className="text-xs font-semibold">Feed</span>
         </button>
-        <button onClick={() => setActiveTab('groupchat')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'groupchat' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
+        <button onClick={() => setActiveTab('groupchat')} onTouchStart={() => setActiveTab('groupchat')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'groupchat' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
           <Users size={22} className={activeTab === 'groupchat' ? 'fill-current' : ''} />
           <span className="text-xs font-semibold">Chat</span>
         </button>
-        <button onClick={() => isAuthenticated ? setShowCreateModal(true) : handleGuestAction()} className="relative -mt-6 w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-110 active:scale-95 transition-all">
+        <button onClick={() => isAuthenticated ? setShowCreateModal(true) : handleGuestAction()} onTouchStart={() => isAuthenticated ? setShowCreateModal(true) : handleGuestAction()} className="relative -mt-6 w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl flex items-center justify-center shadow-xl hover:shadow-2xl hover:scale-110 active:scale-95 transition-all">
           <Plus size={32} strokeWidth={3} />
         </button>
-        <button onClick={() => setActiveTab('dailylog')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'dailylog' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
+        <button onClick={() => setActiveTab('dailylog')} onTouchStart={() => setActiveTab('dailylog')} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${activeTab === 'dailylog' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-500 dark:text-slate-400'}`}>
           <Calendar size={22} className={activeTab === 'dailylog' ? 'fill-current' : ''} />
           <span className="text-xs font-semibold">Log</span>
         </button>
-        <button onClick={() => isAuthenticated ? setShowProfilePage(true) : handleGuestAction()} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${showProfilePage ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
+        <button onClick={() => isAuthenticated ? setShowProfilePage(true) : handleGuestAction()} onTouchStart={() => isAuthenticated ? setShowProfilePage(true) : handleGuestAction()} className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all active:scale-95 ${showProfilePage ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>
           <User size={22} />
           <span className="text-xs font-semibold">Profile</span>
         </button>
