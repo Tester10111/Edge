@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MessageCircle, Heart, Plus, Search, Home, User, X, Send, MoreVertical, Image as ImageIcon, ChevronLeft, ChevronRight, Bell, Settings, LogOut, Edit2, Trash2, Users, Calendar, Camera, Loader, RefreshCw, Moon, Sun } from 'lucide-react';
 import Cropper from 'react-easy-crop';
+import { useSwipeable } from 'react-swipeable';
 
 const SCRIPT_URL = '/api';
 
@@ -45,6 +46,7 @@ const apiRequest = async (method, path, data = null, id = null) => {
     throw error;
   }
 };
+
 
 const uploadImage = async (blob, type) => {
   const dataURL = await toBase64(blob);
@@ -361,6 +363,8 @@ const EdgeApp = () => {
     profileImageURL: '',
     coverImageURL: ''
   });
+
+  const tabs = ['feed', 'groupchat', 'dailylog'];
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
@@ -941,6 +945,23 @@ const EdgeApp = () => {
   const unreadCount = useMemo(() => {
     return notifications.filter(n => !n.isRead && n.recipientId === currentUser?.id).length;
   }, [notifications, currentUser?.id]);
+
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      const currentIndex = tabs.indexOf(activeTab);
+      if (currentIndex < tabs.length - 1) {
+        setActiveTab(tabs[currentIndex + 1]);
+      }
+    },
+    onSwipedRight: () => {
+      const currentIndex = tabs.indexOf(activeTab);
+      if (currentIndex > 0) {
+        setActiveTab(tabs[currentIndex - 1]);
+      }
+    },
+    preventScrollOnSwipe: true,
+    trackMouse: true,
+  });
 
   const PostCard = React.memo(({ post, isAuthenticated, onGuestAction, onLike, onNextImage, onPrevImage, onToggleComments, onCommentSubmit, onEdit, onDelete, highlighted }) => {
     const currentIndex = currentImageIndex[post.id] || 0;
@@ -2020,10 +2041,11 @@ const EdgeApp = () => {
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto no-scrollbar"
+        className="flex-1 overflow-y-auto no-scrollbar transition-all duration-300 ease-in-out"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        {...swipeHandlers}
       >
         <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
           {isLoading || isRefreshing ? (

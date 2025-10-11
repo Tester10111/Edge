@@ -14,7 +14,8 @@
     "lucide-react": "^0.303.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-easy-crop": "^5.5.3"
+    "react-easy-crop": "^5.5.3",
+    "react-swipeable": "^7.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
